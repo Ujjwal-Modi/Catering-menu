@@ -216,8 +216,17 @@ input:focus,select:focus{border-color:var(--saffron);box-shadow:0 0 0 3px rgba(1
 .btn-save:hover{background:var(--herb-deep);}
 
 @media(max-width:600px){
-  .client-list{grid-template-columns:1fr;}
-  .summary-bar .summary-row.save-row{grid-template-columns:1fr 1fr 1fr;}
+  .client-list{
+    grid-template-columns:1fr;
+  }
+
+  .summary-bar .summary-row.save-row{
+    grid-template-columns:1fr 1fr;
+  }
+
+  #pdfMenuBtn{
+    grid-column:1 / -1;
+  }
 }
 </style>
 </head>
