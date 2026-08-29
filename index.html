@@ -353,11 +353,13 @@ ${dishList}`;
         continue;
       }
 
-      const data = await resp.json();
-      let text = (data.choices?.[0]?.message?.content||'').trim();
-      text = text.replace(/```json\s*/gi,'').replace(/```\s*/gi,'').trim();
+      // const data = await resp.json();
+      // let text = (data.choices?.[0]?.message?.content||'').trim();
+      // text = text.replace(/```json\s*/gi,'').replace(/```\s*/gi,'').trim();
 
-      const items = JSON.parse(text);
+      // const items = JSON.parse(text);
+      const items = await resp.json();
+      
       items.forEach(item => {
         dishInfoCache[item.name] = {
           desc: item.desc || '',
