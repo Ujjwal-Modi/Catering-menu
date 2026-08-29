@@ -359,7 +359,7 @@ ${dishList}`;
 
       // const items = JSON.parse(text);
       const items = await resp.json();
-      
+
       items.forEach(item => {
         dishInfoCache[item.name] = {
           desc: item.desc || '',
@@ -798,15 +798,16 @@ function generateMenuPDF(){
       doc.text(meal.label.toUpperCase(), W/2, y, {align:'center'});
       y += 38;
 
-      // Date / Time / PAX line
-      let meta = '';
-      if(day.date) meta += fmtDate(day.date)+' ';
-      if(meal.startTime){
-        meta += 'Time: '+fmtTime12(meal.startTime);
-        if(meal.endTime) meta += ' - '+fmtTime12(meal.endTime);
-        meta += ' ';
-      }
-      if(meal.pax) meta += meal.pax+' Pax';
+      // Date / Time line
+let meta = '';
+
+if(day.date) meta += fmtDate(day.date);
+
+if(meal.startTime){
+  if(meta) meta += ' | ';
+  meta += fmtTime12(meal.startTime);
+  if(meal.endTime) meta += ' - '+fmtTime12(meal.endTime);
+}
 
       if(meta.trim()){
         doc.setFont('times','bold');
