@@ -149,7 +149,15 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 
 .dish-search{margin-top:8px;}
 .dish-search input{font-size:13.5px;padding:8px 11px;}
-.ds-results{margin-top:6px;border:1px solid #e3dac4;border-radius:8px;background:#fff;overflow:hidden;}
+.ds-bar{display:flex;gap:6px;}
+.ds-bar input{flex:1;min-width:0;}
+.ds-bar select{width:auto;flex:0 0 auto;max-width:42%;font-size:13px;padding:8px 9px;}
+.ds-results{margin-top:6px;border:1px solid #e3dac4;border-radius:8px;background:#fff;overflow:auto;max-height:340px;}
+.ds-head{display:flex;justify-content:space-between;align-items:center;gap:8px;padding:6px 8px 6px 11px;background:#faf7ef;border-bottom:1px solid #f0eadb;font-size:12.5px;color:var(--ink-soft);position:sticky;top:0;z-index:1;}
+.ds-head .btn{padding:5px 11px;}
+.bk-tag{display:inline-block;font-size:10.5px;font-weight:500;letter-spacing:.02em;padding:1px 8px;border-radius:999px;background:#efe7d3;color:var(--ink-soft);margin-left:7px;vertical-align:1px;white-space:nowrap;}
+.bucket-new{margin-top:6px;}
+.bucket-new[hidden]{display:none;}
 .ds-results[hidden]{display:none;}
 .ds-item{display:block;width:100%;text-align:left;border:none;background:#fff;padding:8px 11px;font-family:inherit;font-size:13.5px;color:var(--ink);cursor:pointer;border-bottom:1px solid #f0eadb;}
 .ds-item:last-child{border-bottom:none;}
@@ -211,8 +219,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 .modal-actions{display:flex;gap:8px;justify-content:flex-end;flex-wrap:wrap;margin-top:6px;}
 
 /* Library */
-.lib-tools{display:flex;gap:8px;margin-bottom:12px;}
-.lib-tools input{flex:1;}
+.lib-tools{display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap;}
+.lib-tools input{flex:1;min-width:160px;}
+.lib-tools select{width:auto;max-width:200px;}
+.lib-edit .le-bucket-row{display:flex;gap:6px;flex-wrap:wrap;}
+.lib-edit .le-bucket-row select{width:auto;min-width:160px;}
+.lib-edit .le-bucket-row input{flex:1;min-width:140px;}
 .lib-count{font-size:12px;color:var(--ink-soft);margin-bottom:8px;}
 .lib-list{border:1px solid #e3dac4;border-radius:10px;background:#fff;max-height:60vh;overflow:auto;}
 .lib-row{display:grid;grid-template-columns:1fr auto;gap:4px 12px;padding:11px 13px;border-bottom:1px solid #f0eadb;align-items:start;}
@@ -447,6 +459,12 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
       <input type="text" id="ndName" placeholder="e.g. Paneer Lababdar">
     </div>
     <div class="field">
+      <label for="ndBucket">Bucket</label>
+      <select id="ndBucket"></select>
+      <input type="text" id="ndBucketNew" class="bucket-new" maxlength="40" placeholder="New bucket name, e.g. Mocktails" hidden>
+      <div class="hint">Group similar dishes (Sweets, Drinks, Chaat...). In a meal you can pick a bucket and add all its dishes at once.</div>
+    </div>
+    <div class="field">
       <label for="ndDetail">About this dish (optional)</label>
       <textarea id="ndDetail" placeholder="e.g. Made in desi ghee with cashew gravy, Lucknowi style, served in a copper handi"></textarea>
       <div class="hint">The AI uses this note to write the menu line, so mention what makes your version special: ingredients, style, region or how it is served.</div>
@@ -467,6 +485,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <p class="modal-sub">Every dish you add is stored in the cloud. Add a note to any dish so the AI writes a line that matches how you make it.</p>
     <div class="lib-tools">
       <input type="search" id="libSearch" placeholder="Search dishes">
+      <select id="libBucket" aria-label="Filter by bucket"></select>
       <button class="btn btn-ghost btn-sm" id="libFixCapsBtn" title="Fix capital letters in all dish names">Fix capitals</button>
       <button class="btn btn-primary btn-sm" id="libNewBtn">+ New dish</button>
     </div>
@@ -684,19 +703,84 @@ function subscribeLibrary(){
   });
 }
 
-function searchDishes(q, limit=8){
+/* ---------- Buckets ----------
+   A bucket is a simple group name saved on each dish ("bucket" field), e.g. Sweets, Drinks.
+   The bucket list is built from the dishes, plus any bucket created in this session
+   that has no dish yet. Filter values: '' = all, BUCKET_NONE = dishes with no bucket. */
+const BUCKET_NONE = '__none__';
+const BUCKET_NEW = '__new__';
+const sessionBuckets = new Map();
+function cleanBucket(b){ return String(b || '').replace(/\s+/g,' ').trim().slice(0,40); }
+function allBuckets(){
+  const m = new Map();
+  library.forEach(d=>{ const b = cleanBucket(d.bucket); if(b && !m.has(norm(b))) m.set(norm(b), b); });
+  sessionBuckets.forEach((b,k)=>{ if(!m.has(k)) m.set(k, b); });
+  return [...m.values()].sort((a,b)=>a.localeCompare(b));
+}
+function bucketCount(b){
+  if(b === BUCKET_NONE) return [...library.values()].filter(d=>!cleanBucket(d.bucket)).length;
+  return [...library.values()].filter(d=>norm(d.bucket)===norm(b)).length;
+}
+function inBucket(d, b){
+  if(!b) return true;
+  if(b === BUCKET_NONE) return !cleanBucket(d.bucket);
+  return norm(d.bucket) === norm(b);
+}
+/* Builds <option>s. mode 'filter' = All / buckets / No bucket; mode 'pick' = No bucket / buckets / + Create new */
+function bucketOptionsHtml(selected, mode){
+  const list = allBuckets();
+  let h = '';
+  if(mode === 'filter'){
+    h += `<option value="">All buckets</option>`;
+    h += list.map(b=>`<option value="${esc(b)}">${esc(b)} (${bucketCount(b)})</option>`).join('');
+    if(list.length) h += `<option value="${BUCKET_NONE}">No bucket (${bucketCount(BUCKET_NONE)})</option>`;
+  } else {
+    h += `<option value="">No bucket</option>`;
+    h += list.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
+    h += `<option value="${BUCKET_NEW}">+ Create new bucket...</option>`;
+  }
+  return h;
+}
+/* Fill a <select> and keep its value; only rebuilds when the options changed. */
+function fillBucketSelect(sel, mode, keep){
+  const value = keep !== undefined ? keep : sel.value;
+  const html = bucketOptionsHtml(value, mode);
+  if(sel._html !== html){ sel.innerHTML = html; sel._html = html; }
+  const match = [...sel.options].find(o=>o.value===value) ||
+    [...sel.options].find(o=>o.value && o.value!==BUCKET_NEW && o.value!==BUCKET_NONE && norm(o.value)===norm(value));
+  sel.value = match ? match.value : '';
+}
+/* Reads a 'pick' select plus its "new bucket" text box. Returns the bucket name, '' for none, or null if a new name is missing. */
+function readBucketPick(sel, newInput){
+  if(sel.value !== BUCKET_NEW) return sel.value;
+  const b = cleanBucket(newInput.value);
+  if(!b) return null;
+  const nice = titleCaseLocal(b);
+  const existing = allBuckets().find(x=>norm(x)===norm(nice));
+  const name = existing || nice;
+  sessionBuckets.set(norm(name), name);
+  return name;
+}
+function wireBucketPick(sel, newInput){
+  sel.addEventListener('change', ()=>{
+    newInput.hidden = sel.value !== BUCKET_NEW;
+    if(!newInput.hidden){ newInput.value = ''; newInput.focus(); }
+  });
+}
+
+function searchDishes(q, limit=8, bucket=''){
   const words = norm(q).split(' ').filter(Boolean);
-  const all = [...library.values()];
+  const all = [...library.values()].filter(d=>inBucket(d, bucket));
   let res;
   if(!words.length){
     res = all.sort((a,b)=>(b.usage||0)-(a.usage||0) || a.name.localeCompare(b.name));
   } else {
     res = all.map(d=>{
-      const n = norm(d.name), det = norm(d.detail);
+      const n = norm(d.name), det = norm(d.detail), bk = norm(d.bucket);
       let score = 0;
       for(const w of words){
         if(n.includes(w)) score += (n.startsWith(w) ? 4 : (n.includes(' '+w) ? 3 : 2));
-        else if(det.includes(w)) score += 1;
+        else if(det.includes(w) || bk.includes(w)) score += 1;
         else return null;
       }
       return { d, score: score + Math.min(d.usage||0, 50)*0.02 };
@@ -705,13 +789,13 @@ function searchDishes(q, limit=8){
   return res.slice(0, limit);
 }
 
-async function createDish(name, detail){
+async function createDish(name, detail, bucket=''){
   name = String(name || '').replace(/\s+/g,' ').trim();
   if(!name) return null;
   const id = slug(name);
   const existing = library.get(id);
   if(existing) return existing;
-  const data = { name, detail:String(detail||'').trim(), usage:0, ai:{}, nutrition:null, createdAt:new Date().toISOString() };
+  const data = { name, detail:String(detail||'').trim(), bucket:cleanBucket(bucket), usage:0, ai:{}, nutrition:null, createdAt:new Date().toISOString() };
   library.set(id, { id, ...data });
   onLibraryChanged();
   if(db){
@@ -729,6 +813,18 @@ async function updateDishDetail(id, detail){
   if(db){
     try { await db.collection('dishes').doc(id).update({ detail:d.detail, ai:{}, nutrition:null }); showToast('Dish note saved'); }
     catch(e){ showToast('Save failed: ' + e.message, 'error'); }
+  }
+}
+
+async function updateDishBucket(id, bucket, quiet=false){
+  const d = library.get(id); if(!d) return;
+  bucket = cleanBucket(bucket);
+  if(cleanBucket(d.bucket) === bucket) return;
+  d.bucket = bucket;
+  onLibraryChanged();
+  if(db){
+    try { await db.collection('dishes').doc(id).update({ bucket }); if(!quiet) showToast(bucket ? `"${d.name}" moved to ${bucket}` : `"${d.name}" removed from its bucket`); }
+    catch(e){ showToast('Bucket not saved: ' + e.message, 'error'); }
   }
 }
 
@@ -767,6 +863,9 @@ function onLibraryChanged(){
   const badge = document.getElementById('libCountBadge');
   badge.textContent = library.size;
   badge.classList.toggle('zero', library.size === 0);
+  fillBucketSelect(document.getElementById('libBucket'), 'filter');
+  if(!document.getElementById('newDishModal').hidden && document.getElementById('ndBucket').value !== BUCKET_NEW)
+    fillBucketSelect(document.getElementById('ndBucket'), 'pick');
   if(!document.getElementById('libraryModal').hidden && !libEditingId) renderLibraryList();
   document.querySelectorAll('.dish-search').forEach(w=>w._refresh && w._refresh());
 }
@@ -1142,7 +1241,20 @@ function buildSubcatEl(mealEl, meal, sc){
       bumpUsage(name);
       renderChips();
     },
-    ()=> new Set(mealDishes(meal).map(norm))
+    ()=> new Set(mealDishes(meal).map(norm)),
+    (names, bucket)=>{
+      const have = new Set(mealDishes(meal).map(norm));
+      const add = names.filter(n=>!have.has(norm(n)));
+      if(!add.length){ showToast('All of these are already in this meal', 'error'); return; }
+      add.forEach(n=>{ sc.dishes.push(n); bumpUsage(n); });
+      // An unnamed sub-category takes the bucket's name, e.g. "Drinks"
+      if(bucket && bucket !== BUCKET_NONE && !sc.name.trim()){
+        sc.name = bucket;
+        el.querySelector('.subcat-name').value = bucket;
+      }
+      renderChips();
+      showToast(`Added ${add.length} dish${add.length>1?'es':''}`);
+    }
   ));
   return el;
 }
@@ -1150,28 +1262,42 @@ function buildSubcatEl(mealEl, meal, sc){
 /* =========================================================================
    DISH SEARCH WIDGET
    ========================================================================= */
-function buildDishSearch(onPick, getExclude){
+function buildDishSearch(onPick, getExclude, onPickMany){
   const wrap = document.createElement('div'); wrap.className = 'dish-search';
-  wrap.innerHTML = `<input type="search" placeholder="Search dishes, or type a new one" autocomplete="off" enterkeyhint="done"><div class="ds-results" hidden></div>`;
+  wrap.innerHTML = `<div class="ds-bar"><select class="ds-bucket" aria-label="Filter by bucket" title="Filter by bucket"></select><input type="search" placeholder="Search dishes, or type a new one" autocomplete="off" enterkeyhint="done"></div><div class="ds-results" hidden></div>`;
   const inp = wrap.querySelector('input');
+  const sel = wrap.querySelector('.ds-bucket');
   const res = wrap.querySelector('.ds-results');
-  let items = [], active = 0, open = false;
+  let items = [], active = 0, open = false, matches = [];
 
   function render(){
+    fillBucketSelect(sel, 'filter');
+    sel.hidden = !allBuckets().length && !sel.value;
     if(!open){ res.hidden = true; return; }
     const q = inp.value.trim();
+    const bucket = sel.value;
     const ex = getExclude();
-    const found = searchDishes(q, 40).filter(d=>!ex.has(norm(d.name))).slice(0, 8);
-    items = found.map(d=>({ type:'dish', dish:d }));
+    // With a bucket picked (or a search typed) every match is listed; otherwise the top 8.
+    const limit = bucket ? 9999 : (q ? 60 : 8);
+    matches = searchDishes(q, 9999, bucket).filter(d=>!ex.has(norm(d.name)));
+    const shown = matches.slice(0, limit);
+    items = shown.map(d=>({ type:'dish', dish:d }));
     const exactLib = q ? dishByName(q) : null;
     if(q && !exactLib) items.push({ type:'create', name:q });
     let html = '';
     if(!q && !library.size) html += `<div class="ds-hint">${libraryReady ? 'Your dish library is empty. Type a dish name to add the first one.' : 'Loading dishes...'}</div>`;
     if(q && exactLib && ex.has(norm(exactLib.name))) html += `<div class="ds-hint">"${esc(exactLib.name)}" is already in this meal.</div>`;
+    if(onPickMany && shown.length && (bucket || q)){
+      const label = bucket === BUCKET_NONE ? 'Dishes with no bucket' : bucket ? esc(bucket) : 'Matches';
+      html += `<div class="ds-head"><span>${label} · ${matches.length} to add</span><button type="button" class="btn btn-primary btn-sm ds-all">Select all (${matches.length})</button></div>`;
+    }
     html += items.map((it,i)=> it.type==='dish'
-      ? `<button type="button" class="ds-item ${i===active?'active':''}" data-i="${i}">${esc(it.dish.name)}${it.dish.detail?`<small>${esc(it.dish.detail)}</small>`:''}</button>`
+      ? `<button type="button" class="ds-item ${i===active?'active':''}" data-i="${i}">${esc(it.dish.name)}${!bucket && it.dish.bucket ? `<span class="bk-tag">${esc(it.dish.bucket)}</span>` : ''}${it.dish.detail?`<small>${esc(it.dish.detail)}</small>`:''}</button>`
       : `<button type="button" class="ds-item create ${i===active?'active':''}" data-i="${i}">+ Add "${esc(it.name)}" as a new dish</button>`
     ).join('');
+    if(bucket && !q && !shown.length && library.size){
+      html += `<div class="ds-hint">${bucketCount(bucket) ? 'Every dish in this bucket is already in this meal.' : 'No dishes in this bucket yet.'}</div>`;
+    }
     if(q && !items.length && !html) html = '<div class="ds-hint">No matches.</div>';
     res.innerHTML = html;
     res.hidden = !html;
@@ -1180,26 +1306,36 @@ function buildDishSearch(onPick, getExclude){
     if(!it) return;
     if(it.type==='dish'){ onPick(it.dish.name); }
     else {
+      const b = sel.value && sel.value !== BUCKET_NONE ? sel.value : '';
       inp.value = ''; active = 0; open = false; render();
-      openNewDishDialog(it.name, d=>onPick(d.name));
+      openNewDishDialog(it.name, d=>onPick(d.name), b);
       return;
     }
-    inp.value = ''; active = 0; render(); inp.focus();
+    inp.value = ''; active = Math.min(active, Math.max(items.length-2, 0)); render(); inp.focus();
   }
   inp.addEventListener('input', ()=>{ open = true; active = 0; render(); });
   inp.addEventListener('focus', ()=>{ open = true; render(); });
-  inp.addEventListener('blur', ()=>{ setTimeout(()=>{ if(document.activeElement!==inp){ open=false; render(); } }, 160); });
+  sel.addEventListener('change', ()=>{ open = true; active = 0; render(); });
+  wrap.addEventListener('focusout', ()=>{ setTimeout(()=>{ if(!wrap.contains(document.activeElement)){ open=false; render(); } }, 160); });
   inp.addEventListener('keydown', e=>{
     if(e.key==='ArrowDown'){ e.preventDefault(); active = Math.min(active+1, items.length-1); render(); }
     else if(e.key==='ArrowUp'){ e.preventDefault(); active = Math.max(active-1, 0); render(); }
-    else if(e.key==='Enter'){ e.preventDefault(); if(inp.value.trim()) choose(items[active]); }
+    else if(e.key==='Enter'){ e.preventDefault(); if(inp.value.trim() || sel.value) choose(items[active]); }
     else if(e.key==='Escape'){ inp.value=''; open=false; render(); }
   });
   res.addEventListener('mousedown', e=>e.preventDefault());
   res.addEventListener('click', e=>{
+    if(e.target.closest('.ds-all')){
+      const names = matches.map(d=>d.name);
+      if(names.length > 25 && !confirm(`Add all ${names.length} dishes to this section?`)) return;
+      onPickMany(names, sel.value);
+      inp.value = ''; active = 0; render();
+      return;
+    }
     const b = e.target.closest('.ds-item'); if(!b) return;
     choose(items[+b.dataset.i]);
   });
+  render();
   wrap._refresh = render;
   return wrap;
 }
@@ -1211,10 +1347,13 @@ function buildDishSearch(onPick, getExclude){
    ========================================================================= */
 let ndOnSaved = null;
 let ndAddedNames = [];
-function openNewDishDialog(name='', onSaved=null){
+function openNewDishDialog(name='', onSaved=null, bucket=''){
   ndOnSaved = onSaved;
   ndAddedNames = [];
   renderNdAdded();
+  fillBucketSelect(document.getElementById('ndBucket'), 'pick', bucket || '');
+  document.getElementById('ndBucketNew').hidden = true;
+  document.getElementById('ndBucketNew').value = '';
   document.getElementById('ndName').value = name;
   document.getElementById('ndDetail').value = '';
   document.getElementById('newDishModal').hidden = false;
@@ -1231,6 +1370,7 @@ function closeNewDish(){
   closeModal('newDishModal');
 }
 document.getElementById('ndClose').addEventListener('click', closeNewDish);
+wireBucketPick(document.getElementById('ndBucket'), document.getElementById('ndBucketNew'));
 /* Ask the AI to fix only the capital letters of a dish name, e.g. "paneer butter masala" -> "Paneer Butter Masala".
    If the AI changes anything other than capitals, or fails, a simple local Title Case is used instead. */
 const SMALL_WORDS = new Set(['and','with','in','of','on','or','the','a','an','n','for','to','from']);
@@ -1265,6 +1405,13 @@ document.getElementById('ndSave').addEventListener('click', async ()=>{
   const name = nameIn.value.trim();
   const detail = detailIn.value.trim();
   if(!name){ showToast('Enter a dish name', 'error'); nameIn.focus(); return; }
+  const bucketSel = document.getElementById('ndBucket');
+  const bucketNew = document.getElementById('ndBucketNew');
+  const bucket = readBucketPick(bucketSel, bucketNew);
+  if(bucket === null){ showToast('Type a name for the new bucket', 'error'); bucketNew.focus(); return; }
+  // Keep the chosen bucket selected for the next dish
+  fillBucketSelect(bucketSel, 'pick', bucket);
+  bucketNew.hidden = true; bucketNew.value = '';
   const btn = document.getElementById('ndSave'); btn.disabled = true;
   const existed = dishByName(name);
   let finalName = name;
@@ -1273,12 +1420,13 @@ document.getElementById('ndSave').addEventListener('click', async ()=>{
     finalName = await fixDishCapitals(name);
   }
   btn.textContent = 'Save dish';
-  const d = await createDish(finalName, detail);
+  const d = await createDish(finalName, detail, bucket);
   btn.disabled = false;
   if(!d) return;
   if(existed){
     showToast(`"${existed.name}" is already in the library`);
     if(detail && !existed.detail) updateDishDetail(existed.id, detail);
+    if(bucket && norm(existed.bucket) !== norm(bucket)) updateDishBucket(existed.id, bucket);
   } else showToast(finalName !== name ? `Saved as "${d.name}"` : `"${d.name}" added to library`);
   if(!ndAddedNames.includes(d.name)) ndAddedNames.push(d.name);
   renderNdAdded();
@@ -1287,6 +1435,7 @@ document.getElementById('ndSave').addEventListener('click', async ()=>{
   nameIn.focus();
 });
 document.getElementById('ndName').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('ndDetail').focus(); } });
+document.getElementById('ndBucketNew').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('ndSave').click(); } });
 
 /* =========================================================================
    DISH LIBRARY MODAL
@@ -1310,11 +1459,13 @@ document.addEventListener('keydown', e=>{
 document.getElementById('openLibraryBtn').addEventListener('click', ()=>{
   libEditingId = null;
   document.getElementById('libSearch').value = '';
+  fillBucketSelect(document.getElementById('libBucket'), 'filter', '');
   openModal('libraryModal');
   renderLibraryList();
   setTimeout(()=>document.getElementById('libSearch').focus(), 30);
 });
 document.getElementById('libSearch').addEventListener('input', ()=>{ libEditingId=null; renderLibraryList(); });
+document.getElementById('libBucket').addEventListener('change', ()=>{ libEditingId=null; renderLibraryList(); });
 /* ---------- Fix capitals for every dish already in the library ----------
    Dish ids are based on the lowercase name, so only the "name" field changes.
    Saved clients and the menu on screen are updated to the new spelling too. */
@@ -1402,18 +1553,21 @@ document.getElementById('libFixCapsBtn').addEventListener('click', async ()=>{
 });
 
 document.getElementById('libNewBtn').addEventListener('click', ()=>{
-  openNewDishDialog(document.getElementById('libSearch').value.trim(), ()=>renderLibraryList());
+  const b = document.getElementById('libBucket').value;
+  openNewDishDialog(document.getElementById('libSearch').value.trim(), ()=>renderLibraryList(), b !== BUCKET_NONE ? b : '');
 });
 
 function renderLibraryList(){
   const q = document.getElementById('libSearch').value.trim();
+  const bucket = document.getElementById('libBucket').value;
   const listEl = document.getElementById('libList');
-  const rows = q ? searchDishes(q, 9999) : [...library.values()].sort((a,b)=>a.name.localeCompare(b.name));
+  const rows = q ? searchDishes(q, 9999, bucket) : [...library.values()].filter(d=>inBucket(d, bucket)).sort((a,b)=>a.name.localeCompare(b.name));
   const noted = [...library.values()].filter(d=>d.detail).length;
+  const nB = allBuckets().length;
   document.getElementById('libCount').textContent =
-    `${library.size} dish${library.size===1?'':'es'} in the library · ${noted} with a note` + (q ? ` · ${rows.length} match${rows.length===1?'':'es'}` : '');
+    `${library.size} dish${library.size===1?'':'es'} in the library · ${noted} with a note · ${nB} bucket${nB===1?'':'s'}` + ((q || bucket) ? ` · ${rows.length} shown` : '');
   if(!rows.length){
-    listEl.innerHTML = `<div class="lib-empty">${library.size ? 'No dishes match that search.' : 'The library is empty. Add dishes here, or straight from any meal.'}</div>`;
+    listEl.innerHTML = `<div class="lib-empty">${library.size ? (q ? 'No dishes match that search.' : 'No dishes in this bucket yet.') : 'The library is empty. Add dishes here, or straight from any meal.'}</div>`;
     return;
   }
   listEl.innerHTML = '';
@@ -1421,19 +1575,28 @@ function renderLibraryList(){
     const row = document.createElement('div'); row.className = 'lib-row';
     if(libEditingId === d.id){
       row.innerHTML = `<div class="lib-name">${esc(d.name)}</div>
-        <div class="lib-edit"><textarea placeholder="How do you make or serve this dish?">${esc(d.detail||'')}</textarea>
-        <div class="row"><button class="btn btn-ghost btn-sm le-cancel">Cancel</button><button class="btn btn-primary btn-sm le-save">Save note</button></div></div>`;
+        <div class="lib-edit">
+        <div class="le-bucket-row"><select class="le-bucket" aria-label="Bucket"></select><input type="text" class="le-bucket-new" maxlength="40" placeholder="New bucket name" hidden></div>
+        <textarea placeholder="How do you make or serve this dish?">${esc(d.detail||'')}</textarea>
+        <div class="row"><button class="btn btn-ghost btn-sm le-cancel">Cancel</button><button class="btn btn-primary btn-sm le-save">Save</button></div></div>`;
+      const bSel = row.querySelector('.le-bucket'), bNew = row.querySelector('.le-bucket-new');
+      fillBucketSelect(bSel, 'pick', cleanBucket(d.bucket));
+      wireBucketPick(bSel, bNew);
       row.querySelector('.le-cancel').addEventListener('click', ()=>{ libEditingId=null; renderLibraryList(); });
       row.querySelector('.le-save').addEventListener('click', async ()=>{
         const v = row.querySelector('textarea').value;
+        const b = readBucketPick(bSel, bNew);
+        if(b === null){ showToast('Type a name for the new bucket', 'error'); bNew.focus(); return; }
         libEditingId = null;
-        await updateDishDetail(d.id, v);
+        await updateDishBucket(d.id, b, true);
+        if(String(v).trim() !== String(d.detail||'').trim()) await updateDishDetail(d.id, v);
+        else showToast('Dish saved');
         renderLibraryList();
       });
       setTimeout(()=>row.querySelector('textarea').focus(), 20);
     } else {
-      row.innerHTML = `<div class="lib-name">${esc(d.name)}</div>
-        <div class="lib-actions"><button class="btn btn-ghost btn-sm le-edit">${d.detail?'Edit note':'Add note'}</button><button class="btn btn-danger btn-sm le-del" title="Delete from library">✕</button></div>
+      row.innerHTML = `<div class="lib-name">${esc(d.name)}${d.bucket ? `<span class="bk-tag">${esc(d.bucket)}</span>` : ''}</div>
+        <div class="lib-actions"><button class="btn btn-ghost btn-sm le-edit" title="Edit note and bucket">Edit</button><button class="btn btn-danger btn-sm le-del" title="Delete from library">✕</button></div>
         <div class="lib-detail ${d.detail?'':'none'}">${d.detail ? esc(d.detail) : 'No note yet'}</div>`;
       row.querySelector('.le-edit').addEventListener('click', ()=>{ libEditingId=d.id; renderLibraryList(); });
       row.querySelector('.le-del').addEventListener('click', ()=>{
