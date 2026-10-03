@@ -486,6 +486,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <div class="lib-tools">
       <input type="search" id="libSearch" placeholder="Search dishes">
       <select id="libBucket" aria-label="Filter by bucket"></select>
+      <button class="btn btn-danger btn-sm" id="libBucketDel" type="button" title="Delete this bucket. Its dishes move to No bucket." hidden>Delete bucket</button>
       <button class="btn btn-ghost btn-sm" id="libFixCapsBtn" title="Fix capital letters in all dish names">Fix capitals</button>
       <button class="btn btn-primary btn-sm" id="libNewBtn">+ New dish</button>
     </div>
@@ -710,6 +711,8 @@ function subscribeLibrary(){
 const BUCKET_NONE = '__none__';
 const BUCKET_NEW = '__new__';
 const sessionBuckets = new Map();
+// "All buckets" and "No bucket" are built-in: always shown, can't be created or deleted.
+const RESERVED_BUCKETS = new Set(['all', 'all bucket', 'all buckets', 'no bucket', 'none', 'no buckets']);
 function cleanBucket(b){ return String(b || '').replace(/\s+/g,' ').trim().slice(0,40); }
 function allBuckets(){
   const m = new Map();
@@ -733,7 +736,7 @@ function bucketOptionsHtml(selected, mode){
   if(mode === 'filter'){
     h += `<option value="">All buckets</option>`;
     h += list.map(b=>`<option value="${esc(b)}">${esc(b)} (${bucketCount(b)})</option>`).join('');
-    if(list.length) h += `<option value="${BUCKET_NONE}">No bucket (${bucketCount(BUCKET_NONE)})</option>`;
+    h += `<option value="${BUCKET_NONE}">No bucket (${bucketCount(BUCKET_NONE)})</option>`;
   } else {
     h += `<option value="">No bucket</option>`;
     h += list.map(b=>`<option value="${esc(b)}">${esc(b)}</option>`).join('');
@@ -756,6 +759,7 @@ function readBucketPick(sel, newInput){
   const b = cleanBucket(newInput.value);
   if(!b) return null;
   const nice = titleCaseLocal(b);
+  if(RESERVED_BUCKETS.has(norm(nice))){ showToast(`"${nice}" is a built-in option. Please choose another name.`, 'error'); return null; }
   const existing = allBuckets().find(x=>norm(x)===norm(nice));
   const name = existing || nice;
   sessionBuckets.set(norm(name), name);
@@ -826,6 +830,26 @@ async function updateDishBucket(id, bucket, quiet=false){
     try { await db.collection('dishes').doc(id).update({ bucket }); if(!quiet) showToast(bucket ? `"${d.name}" moved to ${bucket}` : `"${d.name}" removed from its bucket`); }
     catch(e){ showToast('Bucket not saved: ' + e.message, 'error'); }
   }
+}
+
+/* Delete a bucket: every dish in it moves to "No bucket". The dishes themselves are kept. */
+async function deleteBucket(bucket){
+  bucket = cleanBucket(bucket);
+  if(!bucket || bucket === BUCKET_NONE || RESERVED_BUCKETS.has(norm(bucket))) return;
+  const dishes = [...library.values()].filter(d=>norm(d.bucket)===norm(bucket));
+  dishes.forEach(d=>{ d.bucket = ''; });
+  sessionBuckets.delete(norm(bucket));
+  onLibraryChanged();
+  if(db && dishes.length){
+    try {
+      for(let i=0; i<dishes.length; i+=450){
+        const batch = db.batch();
+        dishes.slice(i,i+450).forEach(d=>batch.update(db.collection('dishes').doc(d.id), { bucket:'' }));
+        await batch.commit();
+      }
+    } catch(e){ console.error(e); showToast('Bucket not fully deleted: ' + e.message, 'error'); return; }
+  }
+  showToast(`Bucket "${bucket}" deleted` + (dishes.length ? ` · ${dishes.length} dish${dishes.length>1?'es':''} moved to No bucket` : ''));
 }
 
 async function deleteDish(id){
@@ -1272,7 +1296,6 @@ function buildDishSearch(onPick, getExclude, onPickMany){
 
   function render(){
     fillBucketSelect(sel, 'filter');
-    sel.hidden = !allBuckets().length && !sel.value;
     if(!open){ res.hidden = true; return; }
     const q = inp.value.trim();
     const bucket = sel.value;
@@ -1408,7 +1431,7 @@ document.getElementById('ndSave').addEventListener('click', async ()=>{
   const bucketSel = document.getElementById('ndBucket');
   const bucketNew = document.getElementById('ndBucketNew');
   const bucket = readBucketPick(bucketSel, bucketNew);
-  if(bucket === null){ showToast('Type a name for the new bucket', 'error'); bucketNew.focus(); return; }
+  if(bucket === null){ if(!cleanBucket(bucketNew.value)) showToast('Type a name for the new bucket', 'error'); bucketNew.focus(); return; }
   // Keep the chosen bucket selected for the next dish
   fillBucketSelect(bucketSel, 'pick', bucket);
   bucketNew.hidden = true; bucketNew.value = '';
@@ -1466,6 +1489,17 @@ document.getElementById('openLibraryBtn').addEventListener('click', ()=>{
 });
 document.getElementById('libSearch').addEventListener('input', ()=>{ libEditingId=null; renderLibraryList(); });
 document.getElementById('libBucket').addEventListener('change', ()=>{ libEditingId=null; renderLibraryList(); });
+document.getElementById('libBucketDel').addEventListener('click', async ()=>{
+  const sel = document.getElementById('libBucket');
+  const b = sel.value;
+  if(!b || b === BUCKET_NONE) return; // built-in options can't be deleted
+  const n = bucketCount(b);
+  if(!confirm(`Delete the bucket "${b}"?\n\n${n ? `Its ${n} dish${n>1?'es':''} will move to "No bucket". No dish is deleted.` : 'It has no dishes.'}`)) return;
+  sel.value = '';
+  await deleteBucket(b);
+  fillBucketSelect(sel, 'filter', '');
+  renderLibraryList();
+});
 /* ---------- Fix capitals for every dish already in the library ----------
    Dish ids are based on the lowercase name, so only the "name" field changes.
    Saved clients and the menu on screen are updated to the new spelling too. */
@@ -1560,6 +1594,7 @@ document.getElementById('libNewBtn').addEventListener('click', ()=>{
 function renderLibraryList(){
   const q = document.getElementById('libSearch').value.trim();
   const bucket = document.getElementById('libBucket').value;
+  document.getElementById('libBucketDel').hidden = !bucket || bucket === BUCKET_NONE;
   const listEl = document.getElementById('libList');
   const rows = q ? searchDishes(q, 9999, bucket) : [...library.values()].filter(d=>inBucket(d, bucket)).sort((a,b)=>a.name.localeCompare(b.name));
   const noted = [...library.values()].filter(d=>d.detail).length;
@@ -1586,7 +1621,7 @@ function renderLibraryList(){
       row.querySelector('.le-save').addEventListener('click', async ()=>{
         const v = row.querySelector('textarea').value;
         const b = readBucketPick(bSel, bNew);
-        if(b === null){ showToast('Type a name for the new bucket', 'error'); bNew.focus(); return; }
+        if(b === null){ if(!cleanBucket(bNew.value)) showToast('Type a name for the new bucket', 'error'); bNew.focus(); return; }
         libEditingId = null;
         await updateDishBucket(d.id, b, true);
         if(String(v).trim() !== String(d.detail||'').trim()) await updateDishDetail(d.id, v);
