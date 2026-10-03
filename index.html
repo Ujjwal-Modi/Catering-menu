@@ -53,9 +53,18 @@ body.no-scroll{overflow:hidden;}
 /* Setup */
 .setup-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end;}
 .setup-grid .span2{grid-column:span 2;}
-.client-search{display:grid;grid-template-columns:1.6fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px;}
+.client-search{display:grid;grid-template-columns:1.6fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px;position:relative;}
+.client-drop{position:absolute;left:0;right:0;top:calc(100% + 4px);z-index:40;background:var(--card);border:1px solid var(--rule);border-radius:10px;box-shadow:0 18px 40px -14px rgba(35,32,25,.45);max-height:380px;overflow:auto;}
+.client-drop[hidden]{display:none;}
+.client-drop .cd-note{position:sticky;top:0;background:var(--card);font-size:12px;color:var(--ink-soft);padding:8px 14px;border-bottom:1px solid #eee6d3;}
+.client-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0eadb;}
+.client-row:last-child{border-bottom:none;}
+.client-row:hover,.client-row.active{background:#f6f1e4;}
+.client-row .client-card-info{min-width:0;flex:1;}
+.client-row .client-card-actions{display:flex;gap:6px;flex-shrink:0;}
+.client-row .client-card-actions .btn{padding:6px 10px;font-size:11px;}
+@media (max-width:520px){.client-row{flex-wrap:wrap;}.client-row .client-card-actions{width:100%;}}
 .client-search .btn{height:38px;}
-.client-search-note{font-size:12.5px;color:var(--ink-soft);margin:-4px 0 10px;}
 .client-card-venue{font-size:11.5px;color:var(--ink-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
 .link-btn{background:none;border:none;color:var(--saffron-deep);font:600 11.5px 'Work Sans',sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:3px;padding:0 2px;margin-bottom:5px;}
@@ -169,13 +178,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 /* Saved clients */
 .saved-clients{margin-bottom:24px;}
 .saved-clients h3{font-family:'Fraunces',serif;font-weight:600;font-size:18px;margin-bottom:12px;}
-.client-list{display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:10px;}
-.client-card{background:var(--card);border:1px solid var(--rule);border-radius:10px;padding:14px 16px;cursor:pointer;transition:border-color .15s,box-shadow .15s;display:flex;justify-content:space-between;align-items:center;gap:10px;}
-.client-card:hover{border-color:var(--saffron);box-shadow:0 2px 12px -4px rgba(189,130,38,.25);}
 .client-card-info{min-width:0;}
 .client-card-name{font-weight:600;font-size:14.5px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .client-card-meta{font-size:11.5px;color:var(--ink-soft);margin-top:2px;}
-.client-card-actions{display:flex;gap:6px;flex-shrink:0;}
+.client-card-actions{display:flex;gap:6px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
 .client-card-actions .btn{padding:6px 10px;font-size:11px;}
 .no-clients{color:var(--ink-soft);font-size:14px;padding:16px 0;}
 
@@ -326,7 +332,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
   .summary-item .label{font-size:9px;}
   .summary-item .value{font-size:13px;}
   .summary-bar .btn-saffron{width:100%;justify-content:center;padding:11px 16px;font-size:12.5px;}
-  .client-list{grid-template-columns:1fr;}
   .summary-bar .summary-row.save-row{grid-template-columns:1fr 1fr;}
   #pdfMenuBtn{grid-column:1 / -1;}
   .pv-bar{padding:8px 10px;gap:6px;}
@@ -356,17 +361,14 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <div class="client-search">
       <div class="search-name">
         <label for="clientSearchName">Search by name</label>
-        <input type="search" id="clientSearchName" placeholder="Client name">
+        <input type="search" id="clientSearchName" placeholder="Click to see all saved clients" autocomplete="off">
       </div>
       <div>
         <label for="clientSearchDate">Search by date</label>
         <input type="date" id="clientSearchDate">
       </div>
       <button class="btn btn-ghost btn-sm" id="clientSearchClear" type="button">Clear</button>
-    </div>
-    <div class="client-search-note" id="clientSearchNote" hidden></div>
-    <div class="client-list" id="clientList">
-      <div class="no-clients" id="noClients">Loading saved clients...</div>
+      <div class="client-drop" id="clientDrop" hidden></div>
     </div>
   </div>
 
@@ -624,10 +626,10 @@ const FIREBASE_CONFIG = {
   measurementId: "G-XLCB0723F8"
 };
 let db = null;
+let clientListMsg = 'Loading saved clients...';
 function initFirebase(){
   if(!FIREBASE_CONFIG.apiKey || !window.firebase){
-    document.getElementById('clientList').innerHTML =
-      '<div class="no-clients">Firebase is not configured, so nothing can be saved to the cloud.</div>';
+    clientListMsg = 'Firebase is not configured, so nothing can be saved to the cloud.';
     return false;
   }
   try {
@@ -1475,6 +1477,7 @@ function renderMoodForm(){
     <div class="field check-row">
       <label><input type="checkbox" id="mfDesc" ${m.showDescriptions!==false?'checked':''}> Show dish lines</label>
       <label><input type="checkbox" id="mfNut" ${m.showNutrition!==false?'checked':''}> Show nutrition</label>
+      <label title="Used by the Festive & ornate layout"><input type="checkbox" id="mfBg" ${m.bgDesign!==false?'checked':''}> Marble background (festive layout)</label>
     </div>
     <div class="modal-actions">
       ${m._new ? '' : '<button class="btn btn-danger" id="mfDelete">Delete</button>'}
@@ -1485,6 +1488,7 @@ function renderMoodForm(){
   bind('#mfName','name'); bind('#mfTop','topLine'); bind('#mfTone','tone'); bind('#mfTitle','coverTitle'); bind('#mfSub','coverSubtitle'); bind('#mfWelcome','welcomeText');
   f.querySelector('#mfDesc').addEventListener('change', e=>{ m.showDescriptions = e.target.checked; });
   f.querySelector('#mfNut').addEventListener('change', e=>{ m.showNutrition = e.target.checked; });
+  f.querySelector('#mfBg').addEventListener('change', e=>{ m.bgDesign = e.target.checked; });
   f.querySelectorAll('[data-color]').forEach(inp=>inp.addEventListener('input', e=>{ m.colors[inp.dataset.color]=e.target.value; renderMoodList(); }));
   f.querySelectorAll('.style-card').forEach(b=>b.addEventListener('click', ()=>{
     m.style = b.dataset.style;
@@ -1623,6 +1627,111 @@ function fmtTime12(t){
 /* =========================================================================
    PDF — MENU (mood aware)
    ========================================================================= */
+/* Festive background: soft liquid marble, a wave along the bottom and a fern sprig,
+   tinted from the mood's Page and Lines colours. Drawn once on a canvas, cached,
+   and placed behind every page of a festive menu. */
+function makeCanvas(w, h){ const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
+function drawFestiveBackground(cv, C){
+  const PX = 2;                                  // pixels per PDF point
+  const W = cv.width, H = cv.height, S = PX;
+  const g = cv.getContext('2d');
+  // seeded random so every page and every export looks the same
+  let seed = 7;
+  const rnd = ()=>{ seed = (seed*16807) % 2147483647; return seed/2147483647; };
+  // smooth value noise
+  const N = 64, grid = new Float32Array(N*N);
+  for(let i=0;i<grid.length;i++) grid[i] = rnd();
+  const sm = t=>t*t*(3-2*t);
+  const vnoise = (x,y)=>{
+    const xi=Math.floor(x), yi=Math.floor(y), xf=sm(x-xi), yf=sm(y-yi);
+    const at=(a,b)=>grid[((b&(N-1))*N)+(a&(N-1))];
+    const top=at(xi,yi)+(at(xi+1,yi)-at(xi,yi))*xf;
+    const bot=at(xi,yi+1)+(at(xi+1,yi+1)-at(xi,yi+1))*xf;
+    return top+(bot-top)*yf;
+  };
+  const fbm = (x,y)=>{ let v=0,a=0.5,f=1; for(let o=0;o<3;o++){ v+=a*vnoise(x*f,y*f); a*=0.5; f*=2; } return v; };
+
+  const bg = C.bg;
+  const vein = C.accent.map((v,i)=>Math.round(v + (bg[i]-v)*0.62));   // soft peach for veins
+  const deep = C.accent.map((v,i)=>Math.round(v + (bg[i]-v)*0.40));   // stronger tone for wave
+  // Liquid marble: noise is computed at 1 pixel per point, then scaled up smoothly.
+  const R = 0.6;                                 // noise samples per point
+  const lw = Math.round(W/S*R), lh = Math.round(H/S*R);
+  const sm2 = makeCanvas(lw, lh);
+  const sg = sm2.getContext('2d');
+  const img = sg.createImageData(lw, lh), d = img.data;
+  const sc = 1/260;
+  for(let y=0;y<lh;y++){
+    for(let x=0;x<lw;x++){
+      const px=x*sc/R, py=y*sc/R;
+      const qx = fbm(px, py), qy = fbm(px+5.2, py+1.3);
+      const rx = fbm(px+1.6*qx+1.7, py+1.6*qy+9.2), ry = fbm(px+1.6*qx+8.3, py+1.6*qy+2.8);
+      const v = fbm(px+1.8*rx, py+1.8*ry);
+      const t = Math.sin(v*11 + px*2.0 + py*1.0);
+      const t2 = Math.sin(v*23 + px*1.6 - py*0.4);
+      let k = 0.07 + 0.09*t + 0.40*Math.pow(1-Math.abs(t), 7) + 0.22*Math.pow(1-Math.abs(t2), 16);
+      k = Math.max(0, Math.min(0.7, k));
+      const p=(y*lw+x)*4;
+      d[p]  = bg[0] + (vein[0]-bg[0])*k;
+      d[p+1]= bg[1] + (vein[1]-bg[1])*k;
+      d[p+2]= bg[2] + (vein[2]-bg[2])*k;
+      d[p+3]=255;
+    }
+  }
+  sg.putImageData(img,0,0);
+  g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
+  g.drawImage(sm2, 0, 0, W, H);
+  // bottom wave
+  const wave = (yOff)=>{
+    g.beginPath();
+    g.moveTo(0, H);
+    g.lineTo(0, H*(0.815+yOff));
+    g.bezierCurveTo(W*0.22, H*(0.775+yOff), W*0.40, H*(0.855+yOff), W*0.62, H*(0.835+yOff));
+    g.bezierCurveTo(W*0.80, H*(0.825+yOff), W*0.92, H*(0.77+yOff), W, H*(0.735+yOff));
+    g.lineTo(W, H); g.closePath();
+  };
+  const wg = g.createLinearGradient(0, H*0.73, 0, H);
+  wg.addColorStop(0, `rgba(${deep},0.22)`); wg.addColorStop(1, `rgba(${deep},0.36)`);
+  wave(0); g.fillStyle = wg; g.fill();
+  // a lighter inner wave for depth
+  wave(0.03); g.fillStyle = `rgba(${vein},0.30)`; g.fill();
+  // bright rim along the top of the wave
+  wave(0); g.lineWidth = 3*S; g.strokeStyle = 'rgba(255,255,255,0.75)'; g.stroke();
+  wave(0.006); g.lineWidth = 0.8*S; g.strokeStyle = `rgba(${deep},0.45)`; g.stroke();
+
+  // fern sprig, bottom-left, partly off the page
+  const fern = (bx, by, len, ang, scale, alpha)=>{
+    g.save(); g.translate(bx, by); g.rotate(ang);
+    g.strokeStyle = `rgba(${deep},${alpha})`; g.fillStyle = `rgba(${deep},${alpha})`;
+    g.lineWidth = 1.6*S*scale;
+    g.beginPath(); g.moveTo(0,0); g.quadraticCurveTo(len*0.08, -len*0.5, 0, -len); g.stroke();
+    const n = 13;
+    for(let i=1;i<=n;i++){
+      const f = i/n, y = -len*f, x = len*0.08*Math.sin(Math.PI*f)*0.9;
+      const ll = len*0.30*(1-f*0.75)*scale;
+      [-1,1].forEach(side=>{
+        g.save(); g.translate(x,y); g.rotate(side*(0.95 - f*0.35));
+        g.beginPath(); g.ellipse(0, -ll/2, ll*0.17, ll/2, 0, 0, Math.PI*2); g.fill();
+        g.restore();
+      });
+    }
+    g.restore();
+  };
+  fern(W*0.06, H*1.01, H*0.22, -0.28, 1, 0.20);
+  fern(W*0.14, H*1.02, H*0.16, 0.32, 0.85, 0.15);
+  return cv;
+}
+
+const festiveBgCache = {};
+function festiveBackground(colors){
+  const key = colors.bg.join(',') + '|' + colors.accent.join(',');
+  if(!festiveBgCache[key]){
+    const cv = drawFestiveBackground(makeCanvas(595*2, 842*2), colors);
+    festiveBgCache[key] = cv.toDataURL('image/jpeg', 0.85);
+  }
+  return { url: festiveBgCache[key], alias: 'festiveBg_' + key.replace(/[^0-9]/g,'') };
+}
+
 function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
@@ -1670,8 +1779,13 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     doc.line(W/2-half, cy, W/2-8, cy); doc.line(W/2+8, cy, W/2+half, cy);
     diamond(W/2, cy, 3, C.accent);
   }
+  const festiveBg = (style==='festive' && mood.bgDesign !== false) ? festiveBackground(C) : null;
   function paint(){
     doc.setFillColor(...C.bg); doc.rect(0,0,W,H,'F');
+    if(festiveBg){
+      try { doc.addImage(festiveBg.url, 'JPEG', 0, 0, W, H, festiveBg.alias, 'FAST'); }
+      catch(e){ console.error('Background image failed', e); }
+    }
     if(style==='serene'){
       doc.setDrawColor(...C.soft);
       doc.setLineWidth(0.9); doc.rect(22,22,W-44,H-44);
@@ -2503,7 +2617,7 @@ async function saveClient(){
   if(!clientName){ showToast('Enter a client name first','error'); return; }
   if(days.length===0){ showToast('Build days first','error'); return; }
   const data = serializeState();
-  const docId = clientName.replace(/[^a-z0-9]+/gi,'_').toLowerCase();
+  const docId = clientDocId(clientName);
   try {
     await db.collection('clients').doc(docId).set(data);
     ensureInLibrary(allMenuDishes());
@@ -2519,15 +2633,16 @@ let savedClients = []; // [{ id, data }]
 
 async function loadClientList(){
   if(!db) return;
-  const listEl = document.getElementById('clientList');
   try {
     const snapshot = await db.collection('clients').orderBy('savedAt','desc').get();
     savedClients = [];
     snapshot.forEach(doc => savedClients.push({ id:doc.id, data:doc.data() }));
+    clientListMsg = '';
     renderClientList();
   } catch(e){
     console.error('Load list error:', e);
-    listEl.innerHTML = '<div class="no-clients">Error loading clients. Check Firebase config.</div>';
+    clientListMsg = 'Error loading clients. Check Firebase config.';
+    renderClientList();
   }
 }
 
@@ -2535,19 +2650,29 @@ function clientEventDates(d){
   return [...new Set((d.days||[]).map(x=>x.date).filter(Boolean))].sort();
 }
 
-function renderClientList(){
-  const listEl = document.getElementById('clientList');
-  const note = document.getElementById('clientSearchNote');
-  const qName = norm(document.getElementById('clientSearchName').value);
-  const qDate = document.getElementById('clientSearchDate').value; // yyyy-mm-dd
+/* Saved clients appear in a drop-down under the search bar.
+   It opens when the name box is clicked or typed in, or a date is picked,
+   and closes on Escape, on a click elsewhere, or after Load / Clone. */
+const clientDrop = document.getElementById('clientDrop');
+const clientNameBox = document.getElementById('clientSearchName');
+const clientDateBox = document.getElementById('clientSearchDate');
+let clientMatches = [];
 
-  if(!savedClients.length){
-    note.hidden = true;
-    listEl.innerHTML = '<div class="no-clients">No saved clients yet. Build a menu and click Save.</div>';
+function openClientDrop(){ clientDrop.hidden = false; renderClientList(); }
+function closeClientDrop(){ clientDrop.hidden = true; }
+
+function renderClientList(){
+  if(clientDrop.hidden) return;
+  const qName = norm(clientNameBox.value);
+  const qDate = clientDateBox.value; // yyyy-mm-dd
+
+  if(clientListMsg || !savedClients.length){
+    clientMatches = [];
+    clientDrop.innerHTML = `<div class="no-clients" style="padding:14px">${esc(clientListMsg || 'No saved clients yet. Build a menu and click Save Client.')}</div>`;
     return;
   }
 
-  const matches = savedClients.filter(({ id, data:d })=>{
+  clientMatches = savedClients.filter(({ id, data:d })=>{
     if(qName){
       const n = norm(d.clientName || id);
       if(!qName.split(' ').every(w=>n.includes(w))) return false;
@@ -2559,52 +2684,63 @@ function renderClientList(){
     return true;
   });
 
-  const filtering = qName || qDate;
-  note.hidden = !filtering;
-  if(filtering){
-    const parts = [];
-    if(qName) parts.push(`name "${document.getElementById('clientSearchName').value.trim()}"`);
-    if(qDate) parts.push(`event or saved date ${fmtDate(qDate)}`);
-    note.textContent = `${matches.length} of ${savedClients.length} clients match ${parts.join(' and ')}`;
-  }
+  const parts = [];
+  if(qName) parts.push(`name "${clientNameBox.value.trim()}"`);
+  if(qDate) parts.push(`event or saved date ${fmtDate(qDate)}`);
+  const note = parts.length
+    ? `${clientMatches.length} of ${savedClients.length} clients match ${parts.join(' and ')}`
+    : `${savedClients.length} saved client${savedClients.length>1?'s':''}, newest first`;
 
-  if(!matches.length){
-    listEl.innerHTML = '<div class="no-clients">No saved clients match. Try another name or date, or press Clear.</div>';
+  if(!clientMatches.length){
+    clientDrop.innerHTML = `<div class="cd-note">${esc(note)}</div><div class="no-clients" style="padding:14px">No saved clients match. Try another name or date, or press Clear.</div>`;
     return;
   }
 
-  listEl.innerHTML = '';
-  matches.forEach(({ id, data:d })=>{
-    const card = document.createElement('div');
-    card.className = 'client-card';
+  clientDrop.innerHTML = `<div class="cd-note">${esc(note)}</div>`;
+  clientMatches.forEach(({ id, data:d })=>{
+    const row = document.createElement('div');
+    row.className = 'client-row';
     const savedDate = d.savedAt ? new Date(d.savedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '';
     const ev = clientEventDates(d);
     const evText = ev.length ? (ev.length > 1 ? `${fmtDate(ev[0])} - ${fmtDate(ev[ev.length-1])}` : fmtDate(ev[0])) : 'No event date';
     const moodName = d.moodId ? (moods.find(m=>m.id===d.moodId)?.name || '') : '';
-    card.title = savedDate ? `Saved on ${savedDate}` : '';
-    card.innerHTML = `
+    row.title = savedDate ? `Saved on ${savedDate}` : '';
+    row.innerHTML = `
       <div class="client-card-info">
         <div class="client-card-name">${esc(d.clientName||id)}</div>
         ${d.venue ? `<div class="client-card-venue">${esc(d.venue)}</div>` : ''}
         <div class="client-card-meta">${esc(evText)} · ${d.numDays||0} day${(d.numDays||0)>1?'s':''}${moodName?' · '+esc(moodName):''}</div>
       </div>
       <div class="client-card-actions">
-        <button class="btn btn-saffron btn-sm load-btn">Load</button>
-        <button class="btn btn-danger btn-sm del-btn">Delete</button>
+        <button type="button" class="btn btn-saffron btn-sm load-btn">Load</button>
+        <button type="button" class="btn btn-ghost btn-sm clone-btn" title="Copy this menu to a new client">Clone</button>
+        <button type="button" class="btn btn-danger btn-sm del-btn">Delete</button>
       </div>`;
-    card.querySelector('.load-btn').addEventListener('click', () => loadClient(id));
-    card.querySelector('.del-btn').addEventListener('click', () => deleteClient(id, d.clientName));
-    listEl.appendChild(card);
+    row.querySelector('.load-btn').addEventListener('click', () => { closeClientDrop(); loadClient(id); });
+    row.querySelector('.clone-btn').addEventListener('click', () => { closeClientDrop(); cloneClient(id); });
+    row.querySelector('.del-btn').addEventListener('click', () => deleteClient(id, d.clientName));
+    clientDrop.appendChild(row);
   });
 }
-document.getElementById('clientSearchName').addEventListener('input', renderClientList);
-document.getElementById('clientSearchDate').addEventListener('change', renderClientList);
-document.getElementById('clientSearchDate').addEventListener('input', renderClientList);
-document.getElementById('clientSearchClear').addEventListener('click', ()=>{
-  document.getElementById('clientSearchName').value = '';
-  document.getElementById('clientSearchDate').value = '';
-  renderClientList();
+
+clientNameBox.addEventListener('focus', openClientDrop);
+clientNameBox.addEventListener('click', openClientDrop);
+clientNameBox.addEventListener('input', openClientDrop);
+clientNameBox.addEventListener('keydown', e=>{
+  if(e.key === 'Escape'){ closeClientDrop(); clientNameBox.blur(); }
+  if(e.key === 'Enter' && clientMatches.length === 1){ e.preventDefault(); closeClientDrop(); loadClient(clientMatches[0].id); }
 });
+clientDateBox.addEventListener('change', openClientDrop);
+clientDateBox.addEventListener('input', openClientDrop);
+document.getElementById('clientSearchClear').addEventListener('click', ()=>{
+  clientNameBox.value = '';
+  clientDateBox.value = '';
+  closeClientDrop();
+});
+document.addEventListener('mousedown', e=>{
+  if(!clientDrop.hidden && !e.target.closest('.client-search')) closeClientDrop();
+});
+document.addEventListener('keydown', e=>{ if(e.key === 'Escape') closeClientDrop(); });
 
 async function loadClient(docId){
   if(!db) return;
@@ -2617,6 +2753,58 @@ async function loadClient(docId){
   } catch(e){
     console.error('Load error:', e);
     showToast('Load failed: ' + e.message, 'error');
+  }
+}
+
+/* Copies a saved client's full setup (days, meals, sections, dishes, times, PAX,
+   prices, mood) to a new client. Event dates are cleared because a new booking
+   will have its own dates. The copy is saved to the cloud straight away and
+   opened on screen; the original is never changed. */
+function clientDocId(name){ return name.replace(/[^a-z0-9]+/gi,'_').toLowerCase(); }
+
+async function cloneClient(docId){
+  if(!db){ showToast('Firebase not configured!','error'); return; }
+  let src;
+  try {
+    const doc = await db.collection('clients').doc(docId).get();
+    if(!doc.exists){ showToast('Client not found','error'); return; }
+    src = doc.data();
+  } catch(e){
+    console.error('Clone read error:', e);
+    showToast('Clone failed: ' + e.message, 'error');
+    return;
+  }
+
+  const srcName = src.clientName || docId;
+  let newName = `${srcName} (copy)`;
+  while(true){
+    newName = prompt(`Clone "${srcName}"\n\nName for the new client:`, newName);
+    if(newName === null) return;               // cancelled
+    newName = newName.replace(/\s+/g,' ').trim();
+    if(!newName){ alert('Enter a client name.'); continue; }
+    const newId = clientDocId(newName);
+    if(newId === docId || savedClients.some(c => c.id === newId)){
+      alert(`A saved client called "${newName}" already exists. Choose a different name.`);
+      continue;
+    }
+    break;
+  }
+
+  const copy = clone(src);
+  copy.clientName = newName;
+  copy.savedAt = new Date().toISOString();
+  copy.clonedFrom = srcName;
+  (copy.days || []).forEach(d => { d.date = ''; });
+
+  try {
+    await db.collection('clients').doc(clientDocId(newName)).set(copy);
+    deserializeState(copy);
+    showToast(`Cloned to "${newName}". Set the event dates, then save.`);
+    loadClientList();
+    window.scrollTo({ top: document.querySelector('.setup').offsetTop - 20, behavior: 'smooth' });
+  } catch(e){
+    console.error('Clone save error:', e);
+    showToast('Clone failed: ' + e.message, 'error');
   }
 }
 
