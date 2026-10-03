@@ -1300,26 +1300,26 @@ function buildDishSearch(onPick, getExclude, onPickMany){
     const q = inp.value.trim();
     const bucket = sel.value;
     const ex = getExclude();
-    // With a bucket picked (or a search typed) every match is listed; otherwise the top 8.
-    const limit = bucket ? 9999 : (q ? 60 : 8);
+    // Every match is listed (the box scrolls), including "All buckets".
     matches = searchDishes(q, 9999, bucket).filter(d=>!ex.has(norm(d.name)));
-    const shown = matches.slice(0, limit);
+    const shown = matches;
     items = shown.map(d=>({ type:'dish', dish:d }));
     const exactLib = q ? dishByName(q) : null;
     if(q && !exactLib) items.push({ type:'create', name:q });
     let html = '';
     if(!q && !library.size) html += `<div class="ds-hint">${libraryReady ? 'Your dish library is empty. Type a dish name to add the first one.' : 'Loading dishes...'}</div>`;
     if(q && exactLib && ex.has(norm(exactLib.name))) html += `<div class="ds-hint">"${esc(exactLib.name)}" is already in this meal.</div>`;
-    if(onPickMany && shown.length && (bucket || q)){
-      const label = bucket === BUCKET_NONE ? 'Dishes with no bucket' : bucket ? esc(bucket) : 'Matches';
+    if(onPickMany && shown.length){
+      const label = bucket === BUCKET_NONE ? 'Dishes with no bucket' : bucket ? esc(bucket) : (q ? 'Matches' : 'All dishes');
       html += `<div class="ds-head"><span>${label} · ${matches.length} to add</span><button type="button" class="btn btn-primary btn-sm ds-all">Select all (${matches.length})</button></div>`;
     }
     html += items.map((it,i)=> it.type==='dish'
       ? `<button type="button" class="ds-item ${i===active?'active':''}" data-i="${i}">${esc(it.dish.name)}${!bucket && it.dish.bucket ? `<span class="bk-tag">${esc(it.dish.bucket)}</span>` : ''}${it.dish.detail?`<small>${esc(it.dish.detail)}</small>`:''}</button>`
       : `<button type="button" class="ds-item create ${i===active?'active':''}" data-i="${i}">+ Add "${esc(it.name)}" as a new dish</button>`
     ).join('');
-    if(bucket && !q && !shown.length && library.size){
-      html += `<div class="ds-hint">${bucketCount(bucket) ? 'Every dish in this bucket is already in this meal.' : 'No dishes in this bucket yet.'}</div>`;
+    if(!q && !shown.length && library.size){
+      const total = bucket ? bucketCount(bucket) : library.size;
+      html += `<div class="ds-hint">${total ? (bucket ? 'Every dish in this bucket is already in this meal.' : 'Every dish is already in this meal.') : 'No dishes in this bucket yet.'}</div>`;
     }
     if(q && !items.length && !html) html = '<div class="ds-hint">No matches.</div>';
     res.innerHTML = html;
@@ -1339,6 +1339,9 @@ function buildDishSearch(onPick, getExclude, onPickMany){
   inp.addEventListener('input', ()=>{ open = true; active = 0; render(); });
   inp.addEventListener('focus', ()=>{ open = true; render(); });
   sel.addEventListener('change', ()=>{ open = true; active = 0; render(); });
+  // Re-picking the same option (e.g. "All buckets") fires no change event, so open the list on focus/click too.
+  sel.addEventListener('focus', ()=>{ open = true; render(); });
+  sel.addEventListener('click', ()=>{ if(!open){ open = true; render(); } });
   wrap.addEventListener('focusout', ()=>{ setTimeout(()=>{ if(!wrap.contains(document.activeElement)){ open=false; render(); } }, 160); });
   inp.addEventListener('keydown', e=>{
     if(e.key==='ArrowDown'){ e.preventDefault(); active = Math.min(active+1, items.length-1); render(); }
