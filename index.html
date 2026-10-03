@@ -1631,7 +1631,7 @@ function fmtTime12(t){
    tinted from the mood's Page and Lines colours. Drawn once on a canvas, cached,
    and placed behind every page of a festive menu. */
 function makeCanvas(w, h){ const c = document.createElement('canvas'); c.width = w; c.height = h; return c; }
-function drawFestiveBackground(cv, C){
+function drawFestiveBackground(cv, C, withWave){
   const PX = 2;                                  // pixels per PDF point
   const W = cv.width, H = cv.height, S = PX;
   const g = cv.getContext('2d');
@@ -1681,6 +1681,7 @@ function drawFestiveBackground(cv, C){
   sg.putImageData(img,0,0);
   g.imageSmoothingEnabled = true; g.imageSmoothingQuality = 'high';
   g.drawImage(sm2, 0, 0, W, H);
+  if(!withWave) return cv;               // inner pages: marble only
   // bottom wave
   const wave = (yOff)=>{
     g.beginPath();
@@ -1723,13 +1724,27 @@ function drawFestiveBackground(cv, C){
 }
 
 const festiveBgCache = {};
-function festiveBackground(colors){
-  const key = colors.bg.join(',') + '|' + colors.accent.join(',');
+function festiveBackground(colors, withWave){
+  const key = colors.bg.join(',') + '|' + colors.accent.join(',') + (withWave ? '|w' : '');
   if(!festiveBgCache[key]){
-    const cv = drawFestiveBackground(makeCanvas(595*2, 842*2), colors);
+    const cv = drawFestiveBackground(makeCanvas(595*2, 842*2), colors, withWave);
     festiveBgCache[key] = cv.toDataURL('image/jpeg', 0.85);
   }
-  return { url: festiveBgCache[key], alias: 'festiveBg_' + key.replace(/[^0-9]/g,'') };
+  return { url: festiveBgCache[key], alias: 'festiveBg_' + key.replace(/[^0-9w]/g,'') };
+}
+
+/* Draws the logo inside a box without stretching it. ax: 'left'|'center'|'right', ay: 'top'|'middle'. */
+function drawLogo(doc, x, y, boxW, boxH, ax='center', ay='middle'){
+  try {
+    const p = doc.getImageProperties(LOGO_B64);
+    const r = p.width / p.height;
+    let w = boxW, h = boxW / r;
+    if(h > boxH){ h = boxH; w = boxH * r; }
+    const lx = ax==='left' ? x : ax==='right' ? x + boxW - w : x + (boxW - w)/2;
+    const ly = ay==='top' ? y : y + (boxH - h)/2;
+    doc.addImage(LOGO_B64, 'PNG', lx, ly, w, h, 'shaktiLogo');
+    return { x:lx, y:ly, w, h };
+  } catch(e){ console.error('Logo failed', e); return null; }
 }
 
 function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
@@ -1749,7 +1764,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   const mx = style==='serene' ? 70 : 50;
   const showDesc = mood.showDescriptions !== false;
   const showNut = mood.showNutrition !== false;
-  const limitY = style==='serene' ? H - 135 : H - 125;
+  const limitY = style==='serene' ? H - 75 : H - 60;   // inner pages have no footer
 
   const font = (f, s, size, color)=>{ doc.setFont(f, s); doc.setFontSize(size); if(color) doc.setTextColor(...color); };
   function fitText(text, f, s, maxSize, minSize, width){
@@ -1779,11 +1794,12 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     doc.line(W/2-half, cy, W/2-8, cy); doc.line(W/2+8, cy, W/2+half, cy);
     diamond(W/2, cy, 3, C.accent);
   }
-  const festiveBg = (style==='festive' && mood.bgDesign !== false) ? festiveBackground(C) : null;
-  function paint(){
+  const useBg = style==='festive' && mood.bgDesign !== false;
+  function paint(isCover=false){
     doc.setFillColor(...C.bg); doc.rect(0,0,W,H,'F');
-    if(festiveBg){
-      try { doc.addImage(festiveBg.url, 'JPEG', 0, 0, W, H, festiveBg.alias, 'FAST'); }
+    if(useBg){
+      const bgImg = festiveBackground(C, isCover);   // wave + fern on the cover only
+      try { doc.addImage(bgImg.url, 'JPEG', 0, 0, W, H, bgImg.alias, 'FAST'); }
       catch(e){ console.error('Background image failed', e); }
     }
     if(style==='serene'){
@@ -1796,7 +1812,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   }
   function footer(isCover){
     const footerY = style==='serene' ? (isCover ? H-155 : H-122) : (isCover ? H-140 : H-110);
-    try { doc.addImage(LOGO_B64, 'PNG', W/2-50, footerY, 100, 55); } catch(e){}
+    drawLogo(doc, W/2-50, footerY, 100, 55, 'center', 'middle');
     font(F, 'bold', style==='modern' ? 11.5 : 13, C.text);
     doc.text('8934020403', W/2-110, footerY+40, {align:'center'});
     doc.text('9889815000', W/2+110, footerY+40, {align:'center'});
@@ -1818,7 +1834,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   const welcome = pdfSafe(mood.welcomeText).replace(/\s*\n\s*/g,'\n');
 
   /* ===== COVER ===== */
-  paint();
+  paint(true);
   if(style==='festive'){
     if(topLine){ font('times','bolditalic',14,C.secondary); doc.text(topLine, W/2, 45, {align:'center'}); }
     doc.setDrawColor(...C.heading); doc.setLineWidth(2); doc.line(mx,60,W-mx,60);
@@ -1915,8 +1931,12 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     }
     return meta.trim();
   }
+  const LOGO_BOX = { w:84, h:46, right: style==='serene' ? 36 : 24, top: style==='serene' ? 34 : 14 };
+  // width a centred heading can use without running under the logo
+  const headW = W - 2*(LOGO_BOX.right + LOGO_BOX.w + 10);
   function mealHeader(day, meal, contd){
     paint();
+    drawLogo(doc, W - LOGO_BOX.right - LOGO_BOX.w, LOGO_BOX.top, LOGO_BOX.w, LOGO_BOX.h, 'right', 'top');
     const label = pdfSafe(meal.label) || 'Menu';
     const meta = metaLine(day, meal);
     let y;
@@ -1927,7 +1947,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
         return 92;
       }
       y = 50;
-      font('times','bold', fitText(label.toUpperCase(),'times','bold',26,16,W-2*mx), C.heading);
+      font('times','bold', fitText(label.toUpperCase(),'times','bold',26,14,headW), C.heading);
       doc.text(label.toUpperCase(), W/2, y, {align:'center'}); y += 38;
       if(meta){ font('times','bold',18,C.text); doc.text(meta, W/2, y, {align:'center'}); y += 14; }
       doc.setDrawColor(...C.heading); doc.setLineWidth(1.5); doc.line(mx, y+6, W-mx, y+6);
@@ -1939,7 +1959,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
         return 104;
       }
       y = 82;
-      font('times','normal', fitText(label.toUpperCase(),'times','normal',24,15,W-2*mx), C.heading);
+      font('times','normal', fitText(label.toUpperCase(),'times','normal',24,13,headW), C.heading);
       doc.text(label.toUpperCase(), W/2, y, {align:'center'}); y += 26;
       if(meta){ font('times','italic',13,C.secondary); doc.text(meta, W/2, y, {align:'center'}); y += 18; }
       ornament(y, 50);
@@ -1952,7 +1972,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
       return 86;
     }
     y = 60;
-    font('helvetica','bold', fitText(label,'helvetica','bold',24,15,W-2*mx), C.heading);
+    font('helvetica','bold', fitText(label,'helvetica','bold',24,13,W - mx - LOGO_BOX.right - LOGO_BOX.w - 12), C.heading);
     doc.text(label, mx, y); y += 20;
     if(meta){ font('helvetica','normal',11,C.secondary); doc.text(meta, mx, y); y += 12; }
     doc.setDrawColor(...C.accent); doc.setLineWidth(1); doc.line(mx, y, W-mx, y);
@@ -2043,7 +2063,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
       if(!subs.length) return;
       doc.addPage();
       let y = mealHeader(day, meal, false);
-      const newPage = ()=>{ footer(false); doc.addPage(); y = mealHeader(day, meal, true); };
+      const newPage = ()=>{ doc.addPage(); y = mealHeader(day, meal, true); };
       subs.forEach((sc, sIdx)=>{
         const hasTitle = !!pdfSafe(sc.name);
         const firstH = dish(sc.dishes[0], 0, sc.dishes.length===1, false);
@@ -2061,7 +2081,6 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
           y = dish(dName, y, isLast, true);
         });
       });
-      footer(false);
     });
   });
   return doc;
@@ -2408,7 +2427,7 @@ function generateQuotePDF(details, sample=false){
     doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(240,235,220);
     doc.text(`GSTIN: ${pdfSafe(B.gstin)}`, mx, 76);
   }
-  try { doc.addImage(LOGO_B64,'PNG',W-mx-70,12,60,60); } catch(e){}
+  drawLogo(doc, W-mx-70, 12, 60, 60, 'right', 'middle');
 
   let y=112;
   doc.setTextColor(...inkRGB);
