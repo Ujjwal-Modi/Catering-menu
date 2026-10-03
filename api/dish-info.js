@@ -67,6 +67,24 @@ Return JSON only, one entry per dish in the same order: {"names":["...","..."]}`
   return res.status(200).json(single ? { name: fixed[0] } : { names: fixed });
 }
 
+async function writeThankYou(body, res) {
+  const { occasion, tone } = readMood(body);
+  const prompt = `You write the closing "thank you" page of a printed Indian catering menu for "Shakti Catering & Events".
+Occasion: ${occasion}
+Tone: ${tone}
+
+Write:
+- "title": a short heading for the page, 1 to 4 words, e.g. "Thank You" or "With Gratitude", suited to the occasion. No quotation marks.
+- "text": ONE heartfelt thank-you line of 20 to 35 words, in the tone above, suited to the occasion, thanking the hosts and guests. Do not mention phone numbers or addresses. Plain characters only, no emojis.
+
+Return JSON only: {"title":"...","text":"..."}`;
+  const out = await callOpenAI(prompt, 250);
+  return res.status(200).json({
+    title: String(out.title || "").trim(),
+    text: String(out.text || "").trim(),
+  });
+}
+
 async function writeWelcome(body, res) {
   const { occasion, tone } = readMood(body);
   const prompt = `You write the welcome page of a printed Indian catering menu for "Shakti Catering & Events".
@@ -99,6 +117,10 @@ export default async function handler(req, res) {
 
     if (body.type === "welcome") {
       return await writeWelcome(body, res);
+    }
+
+    if (body.type === "thankyou") {
+      return await writeThankYou(body, res);
     }
 
     // New format: dishes:[{name, detail}]. Old format dishNames:[string] still works.

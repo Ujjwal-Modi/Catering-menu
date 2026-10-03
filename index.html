@@ -772,7 +772,9 @@ const DEFAULT_MOODS = [
     topLine:'|| Shri Ganeshaya Namah ||',
     coverTitle:'A Feast of Love Begins Here',
     welcomeText:"Welcome to a celebration woven with warmth, flavor, and unforgettable moments. At Shakti Catering & Events, we are honored to be part of your special day. As you gather with loved ones to toast to togetherness, we invite you to enjoy our thoughtfully curated Wedding menu\u2014a reflection of tradition, taste, and timeless joy.\nLet each dish serve as a symbol of the care and creativity we bring to every event. Here's to a culinary journey that fills your heart as much as your plate.",
-    coverSubtitle:'{days} Event', showDescriptions:true, showNutrition:true
+    coverSubtitle:'{days} Event', showDescriptions:true, showNutrition:true,
+    thankYouTitle:'Thank You',
+    thankYouText:'Thank you for letting us be a part of your most cherished celebration. May every flavour you tasted today linger as a sweet memory of love, laughter and new beginnings.'
   },
   {
     id:'condolence', order:2, name:'Condolence / Shraddhanjali', style:'serene',
@@ -781,7 +783,9 @@ const DEFAULT_MOODS = [
     topLine:'|| Om Shanti ||',
     coverTitle:'In Loving Memory',
     welcomeText:'We gather in quiet remembrance of a life that touched many hearts. Shakti Catering & Events humbly serves this simple meal, prepared with care and respect, for all who have come to stand with the family. May the departed soul rest in eternal peace.',
-    coverSubtitle:'', showDescriptions:true, showNutrition:false
+    coverSubtitle:'', showDescriptions:true, showNutrition:false,
+    thankYouTitle:'With Gratitude',
+    thankYouText:'We are grateful to have served the family and all who gathered in remembrance today. May the departed soul find eternal peace, and may the family find strength and comfort.'
   },
   {
     id:'corporate', order:3, name:'Corporate', style:'modern',
@@ -790,7 +794,9 @@ const DEFAULT_MOODS = [
     topLine:'',
     coverTitle:'Welcome',
     welcomeText:"Thank you for joining us. Shakti Catering & Events is pleased to present today's menu, thoughtfully curated and freshly prepared for your gathering. We hope every course adds to a productive and memorable day.",
-    coverSubtitle:'', showDescriptions:true, showNutrition:true
+    coverSubtitle:'', showDescriptions:true, showNutrition:true,
+    thankYouTitle:'Thank You',
+    thankYouText:'Thank you for choosing us to serve your team today. We hope the meal kept the energy high and the conversations flowing, and we look forward to serving you again.'
   },
   {
     id:'birthday', order:4, name:'Birthday & Celebration', style:'festive',
@@ -799,9 +805,12 @@ const DEFAULT_MOODS = [
     topLine:'',
     coverTitle:"Let's Celebrate",
     welcomeText:"Here's to laughter, good company and a table full of favourites! Shakti Catering & Events is delighted to be part of your celebration. Dig in, raise a toast and enjoy every bite of this specially curated menu.",
-    coverSubtitle:'', showDescriptions:true, showNutrition:true
+    coverSubtitle:'', showDescriptions:true, showNutrition:true,
+    thankYouTitle:'Thank You',
+    thankYouText:'Thank you for celebrating with us! We hope every bite added a little extra sparkle to your special day. Here is to many more happy moments and full plates.'
   }
 ];
+const GENERIC_THANKS = { thankYouTitle:'Thank You', thankYouText:'Thank you for letting us serve you today. It was our pleasure to be part of your occasion, and we hope every dish left a warm and lasting memory.' };
 let moods = clone(DEFAULT_MOODS);
 let currentMoodId = 'wedding';
 let moodsSeeded = false;
@@ -809,8 +818,11 @@ let moodsSeeded = false;
 function getMood(id){ return moods.find(m=>m.id===id) || moods[0] || DEFAULT_MOODS[0]; }
 function normalizeMood(m){
   const base = DEFAULT_MOODS[0];
+  const own = DEFAULT_MOODS.find(d=>d.id===m.id) || GENERIC_THANKS;
   return {
-    ...clone(base), ...m,
+    ...clone(base),
+    thankYouTitle: own.thankYouTitle, thankYouText: own.thankYouText,
+    ...m,
     colors:{ ...base.colors, ...(m.colors||{}) },
     style: MOOD_STYLES[m.style] ? m.style : 'festive'
   };
@@ -1474,6 +1486,15 @@ function renderMoodForm(){
       <div class="label-row"><label for="mfWelcome">Welcome message</label><button type="button" class="link-btn" id="mfAiWelcome">Write with AI</button></div>
       <textarea id="mfWelcome" style="min-height:120px">${esc(m.welcomeText)}</textarea>
     </div>
+    <div class="field">
+      <label for="mfThanksTitle">Thank you page title</label>
+      <input type="text" id="mfThanksTitle" value="${esc(m.thankYouTitle)}" placeholder="Thank You">
+    </div>
+    <div class="field">
+      <div class="label-row"><label for="mfThanks">Thank you line (last page)</label><button type="button" class="link-btn" id="mfAiThanks">Write with AI</button></div>
+      <textarea id="mfThanks" style="min-height:80px">${esc(m.thankYouText)}</textarea>
+      <div class="hint">Shown on the last page with the phone numbers and address. Leave blank to skip the line.</div>
+    </div>
     <div class="field check-row">
       <label><input type="checkbox" id="mfDesc" ${m.showDescriptions!==false?'checked':''}> Show dish lines</label>
       <label><input type="checkbox" id="mfNut" ${m.showNutrition!==false?'checked':''}> Show nutrition</label>
@@ -1486,6 +1507,7 @@ function renderMoodForm(){
     </div>`;
   const bind = (id, key)=>f.querySelector(id).addEventListener('input', e=>{ m[key]=e.target.value; if(key==='name') renderMoodList(); });
   bind('#mfName','name'); bind('#mfTop','topLine'); bind('#mfTone','tone'); bind('#mfTitle','coverTitle'); bind('#mfSub','coverSubtitle'); bind('#mfWelcome','welcomeText');
+  bind('#mfThanksTitle','thankYouTitle'); bind('#mfThanks','thankYouText');
   f.querySelector('#mfDesc').addEventListener('change', e=>{ m.showDescriptions = e.target.checked; });
   f.querySelector('#mfNut').addEventListener('change', e=>{ m.showNutrition = e.target.checked; });
   f.querySelector('#mfBg').addEventListener('change', e=>{ m.bgDesign = e.target.checked; });
@@ -1531,6 +1553,22 @@ function renderMoodForm(){
       if(data.title) m.coverTitle = data.title;
       f.querySelector('#mfWelcome').value = m.welcomeText;
       f.querySelector('#mfTitle').value = m.coverTitle;
+    } catch(err){ showToast('AI could not write it: ' + err.message, 'error'); }
+    btn.textContent = 'Write with AI'; btn.disabled = false;
+  });
+  f.querySelector('#mfAiThanks').addEventListener('click', async e=>{
+    const btn = e.target; btn.textContent = 'Writing...'; btn.disabled = true;
+    try {
+      const resp = await fetch('/api/dish-info', {
+        method:'POST', headers:{'Content-Type':'application/json'},
+        body: JSON.stringify({ type:'thankyou', mood:{ name:m.name, tone:m.tone } })
+      });
+      const data = await resp.json();
+      if(!resp.ok || !data.text) throw new Error(data.error || 'No text returned');
+      m.thankYouText = data.text;
+      if(data.title) m.thankYouTitle = data.title;
+      f.querySelector('#mfThanks').value = m.thankYouText;
+      f.querySelector('#mfThanksTitle').value = m.thankYouTitle;
     } catch(err){ showToast('AI could not write it: ' + err.message, 'error'); }
     btn.textContent = 'Write with AI'; btn.disabled = false;
   });
@@ -1810,16 +1848,17 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
       doc.setFillColor(...C.heading); doc.rect(0,0,W,6,'F');
     }
   }
+  const PHONES = ['8934020403', '9889815000'];
+  const ADDRESS = 'Infront of Pillar No 9, Near Haryana Transport, Transport Nagar, Gorakhpur - 273016';
   function footer(isCover){
-    const footerY = style==='serene' ? (isCover ? H-155 : H-122) : (isCover ? H-140 : H-110);
+    const footerY = style==='serene' ? (isCover ? H-138 : H-122) : (isCover ? H-112 : H-110);
     drawLogo(doc, W/2-50, footerY, 100, 55, 'center', 'middle');
     font(F, 'bold', style==='modern' ? 11.5 : 13, C.text);
-    doc.text('8934020403', W/2-110, footerY+40, {align:'center'});
-    doc.text('9889815000', W/2+110, footerY+40, {align:'center'});
+    doc.text(PHONES[0], W/2-110, footerY+40, {align:'center'});
+    doc.text(PHONES[1], W/2+110, footerY+40, {align:'center'});
     if(isCover){
       font(F, 'normal', style==='modern' ? 10 : 12, C.secondary);
-      const addr = 'Shakti Catering And Events | Infront of Pillar No 9, Near Haryana Transport, Transport Nagar, Gorakhpur - 273016';
-      doc.text(addr, W/2, style==='serene' ? H-58 : H-30, {align:'center', maxWidth: style==='serene' ? W-120 : W-80});
+      doc.text(ADDRESS, W/2, style==='serene' ? H-58 : H-30, {align:'center', maxWidth: style==='serene' ? W-120 : W-80});
     }
   }
 
@@ -1931,7 +1970,8 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     }
     return meta.trim();
   }
-  const LOGO_BOX = { w:84, h:46, right: style==='serene' ? 36 : 24, top: style==='serene' ? 34 : 14 };
+  const LOGO_BOX = { w:84, h:46, right: style==='serene' ? 36 : 24, top: style==='serene' ? 50 : 34 };
+  const TOP = style==='serene' ? 14 : 20;   // extra top margin on meal pages
   // width a centred heading can use without running under the logo
   const headW = W - 2*(LOGO_BOX.right + LOGO_BOX.w + 10);
   function mealHeader(day, meal, contd){
@@ -1942,39 +1982,39 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     let y;
     if(style==='festive'){
       if(contd){
-        font('times','italic',14,C.secondary); doc.text(`${label} (continued)`, W/2, 50, {align:'center'});
-        doc.setDrawColor(...C.soft); doc.setLineWidth(0.5); doc.line(mx, 62, W-mx, 62);
-        return 92;
+        font('times','italic',14,C.secondary); doc.text(`${label} (continued)`, W/2, 50+TOP, {align:'center'});
+        doc.setDrawColor(...C.soft); doc.setLineWidth(0.5); doc.line(mx, 62+TOP, W-mx, 62+TOP);
+        return 92+TOP;
       }
-      y = 50;
+      y = 50 + TOP;
       font('times','bold', fitText(label.toUpperCase(),'times','bold',26,14,headW), C.heading);
-      doc.text(label.toUpperCase(), W/2, y, {align:'center'}); y += 38;
-      if(meta){ font('times','bold',18,C.text); doc.text(meta, W/2, y, {align:'center'}); y += 14; }
+      doc.text(label.toUpperCase(), W/2, y, {align:'center'}); y += 34;
+      if(meta){ font('times','bold', fitText(meta,'times','bold',14,9,W-2*mx), C.text); doc.text(meta, W-mx, y, {align:'right'}); y += 12; }
       doc.setDrawColor(...C.heading); doc.setLineWidth(1.5); doc.line(mx, y+6, W-mx, y+6);
       return y + 36;
     }
     if(style==='serene'){
       if(contd){
-        font('times','italic',13,C.secondary); doc.text(`${label} (continued)`, W/2, 68, {align:'center'});
-        return 104;
+        font('times','italic',13,C.secondary); doc.text(`${label} (continued)`, W/2, 68+TOP, {align:'center'});
+        return 104+TOP;
       }
-      y = 82;
+      y = 82 + TOP;
       font('times','normal', fitText(label.toUpperCase(),'times','normal',24,13,headW), C.heading);
       doc.text(label.toUpperCase(), W/2, y, {align:'center'}); y += 26;
-      if(meta){ font('times','italic',13,C.secondary); doc.text(meta, W/2, y, {align:'center'}); y += 18; }
+      if(meta){ font('times','italic', fitText(meta,'times','italic',11,8,W-2*mx), C.secondary); doc.text(meta, W-mx, y, {align:'right'}); y += 18; }
       ornament(y, 50);
       return y + 40;
     }
     // modern
     if(contd){
-      font('helvetica','bold',12,C.secondary); doc.text(`${label} (continued)`, mx, 48);
-      doc.setDrawColor(...C.soft); doc.setLineWidth(0.6); doc.line(mx, 58, W-mx, 58);
-      return 86;
+      font('helvetica','bold',12,C.secondary); doc.text(`${label} (continued)`, mx, 48+TOP);
+      doc.setDrawColor(...C.soft); doc.setLineWidth(0.6); doc.line(mx, 58+TOP, W-mx, 58+TOP);
+      return 86+TOP;
     }
-    y = 60;
+    y = 60 + TOP;
     font('helvetica','bold', fitText(label,'helvetica','bold',24,13,W - mx - LOGO_BOX.right - LOGO_BOX.w - 12), C.heading);
-    doc.text(label, mx, y); y += 20;
-    if(meta){ font('helvetica','normal',11,C.secondary); doc.text(meta, mx, y); y += 12; }
+    doc.text(label, mx, y); y += 24;
+    if(meta){ font('helvetica','normal', fitText(meta,'helvetica','normal',9.5,7.5,W-2*mx), C.secondary); doc.text(meta, W-mx, y, {align:'right'}); y += 10; }
     doc.setDrawColor(...C.accent); doc.setLineWidth(1); doc.line(mx, y, W-mx, y);
     return y + 32;
   }
@@ -2083,6 +2123,39 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
       });
     });
   });
+
+  /* ===== THANK YOU PAGE ===== */
+  const thanksTitle = pdfSafe(mood.thankYouTitle) || 'Thank You';
+  const thanksText = pdfSafe(mood.thankYouText).replace(/\s*\n\s*/g,'\n');
+  doc.addPage();
+  paint(true);
+  const tw = W - 2*mx;
+  const titleF = style==='modern' ? ['helvetica','bold'] : (style==='serene' ? ['times','normal'] : ['times','bolditalic']);
+  const lineF = style==='modern' ? ['helvetica','normal'] : ['times','italic'];
+  const tSize = fitText(thanksTitle, titleF[0], titleF[1], style==='serene' ? 36 : 44, 22, tw);
+  const tFit = thanksText ? fitParagraph(thanksText, lineF[0], lineF[1], style==='modern' ? 13 : 15, 10, tw-60, 190, 1.6) : null;
+  // centre the logo + title + line block in the space above the contact details
+  const blockH = 110 + 30 + tSize*0.8 + 30 + (tFit ? tFit.h : 0);
+  let ty = Math.max(style==='serene' ? 90 : 70, (H - 230 - blockH)/2 + 20);
+  drawLogo(doc, W/2-100, ty, 200, 110, 'center', 'middle');
+  ty += 110 + 30 + tSize*0.8;
+  font(titleF[0], titleF[1], tSize, C.heading);
+  doc.text(thanksTitle, W/2, ty, {align:'center'});
+  ty += 26;
+  if(style==='modern'){ doc.setFillColor(...C.accent); doc.rect(W/2-28, ty-2, 56, 4, 'F'); }
+  else ornament(ty, 70);
+  ty += 34;
+  if(tFit){
+    font(lineF[0], lineF[1], tFit.size, style==='serene' ? C.secondary : C.text);
+    doc.text(tFit.lines, W/2, ty, {align:'center', lineHeightFactor:1.6});
+  }
+  // contact details
+  const cY = style==='serene' ? H-120 : H-118;
+  if(style!=='modern') ornament(cY-30, 40);
+  font(F, 'bold', style==='modern' ? 12 : 14, C.text);
+  doc.text(PHONES.join('     |     '), W/2, cY, {align:'center'});
+  font(F, 'normal', style==='modern' ? 10 : 11.5, C.secondary);
+  doc.text(ADDRESS, W/2, cY+22, {align:'center', maxWidth: style==='serene' ? W-140 : W-100});
   return doc;
 }
 
