@@ -37,6 +37,36 @@ function readMood(body) {
   };
 }
 
+// Fixes only the capital letters of dish names. Spelling and words are never changed.
+// Accepts { name } (returns { name }) or { names:[...] } (returns { names:[...] }).
+// Any name the AI changed beyond capitals comes back as null, and the app uses simple Title Case.
+async function fixName(body, res) {
+  const clean = (v) => String(v || "").replace(/\s+/g, " ").trim().slice(0, 120);
+  const single = !Array.isArray(body.names);
+  const names = (single ? [body.name] : body.names).map(clean).slice(0, 40);
+  if (!names.length || names.some((n) => !n)) {
+    return res.status(400).json({ error: "name is required" });
+  }
+  const list = names.map((n, i) => `${i + 1}. ${n}`).join("\n");
+  const prompt = `These are names of Indian dishes for a printed catering menu:
+${list}
+
+For each one, fix ONLY the capital letters so it reads well on a menu:
+- Capitalise each main word (Title Case), e.g. "paneer butter masala" -> "Paneer Butter Masala".
+- Keep small joining words lowercase unless they are the first word: and, with, in, of, n.
+- Keep short abbreviations in capitals, e.g. BBQ.
+- Do NOT change spelling, add, remove or reorder words, or change punctuation and spaces.
+
+Return JSON only, one entry per dish in the same order: {"names":["...","..."]}`;
+  const out = await callOpenAI(prompt, 60 + names.length * 30);
+  const got = Array.isArray(out.names) ? out.names : out.name ? [out.name] : [];
+  const fixed = names.map((orig, i) => {
+    const f = clean(got[i]);
+    return f && f.toLowerCase() === orig.toLowerCase() ? f : null;
+  });
+  return res.status(200).json(single ? { name: fixed[0] } : { names: fixed });
+}
+
 async function writeWelcome(body, res) {
   const { occasion, tone } = readMood(body);
   const prompt = `You write the welcome page of a printed Indian catering menu for "Shakti Catering & Events".
@@ -62,6 +92,10 @@ export default async function handler(req, res) {
 
   try {
     const body = req.body || {};
+
+    if (body.type === "name") {
+      return await fixName(body, res);
+    }
 
     if (body.type === "welcome") {
       return await writeWelcome(body, res);

@@ -461,6 +461,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <p class="modal-sub">Every dish you add is stored in the cloud. Add a note to any dish so the AI writes a line that matches how you make it.</p>
     <div class="lib-tools">
       <input type="search" id="libSearch" placeholder="Search dishes">
+      <button class="btn btn-ghost btn-sm" id="libFixCapsBtn" title="Fix capital letters in all dish names">Fix capitals</button>
       <button class="btn btn-primary btn-sm" id="libNewBtn">+ New dish</button>
     </div>
     <div class="lib-count" id="libCount"></div>
@@ -1197,6 +1198,34 @@ function closeNewDish(){
   closeModal('newDishModal');
 }
 document.getElementById('ndClose').addEventListener('click', closeNewDish);
+/* Ask the AI to fix only the capital letters of a dish name, e.g. "paneer butter masala" -> "Paneer Butter Masala".
+   If the AI changes anything other than capitals, or fails, a simple local Title Case is used instead. */
+const SMALL_WORDS = new Set(['and','with','in','of','on','or','the','a','an','n','for','to','from']);
+function titleCaseLocal(name){
+  return name.replace(/\s+/g,' ').trim().split(' ').map((w,i)=>{
+    const lower = w.toLowerCase();
+    if(i>0 && SMALL_WORDS.has(lower)) return lower;
+    if(w.length > 1 && w === w.toUpperCase() && /[A-Z]/.test(w) && w.length <= 4) return w; // keep short acronyms like BBQ
+    return lower.replace(/(^|[(\/\-.&])([a-z])/g, (m,a,b)=>a+b.toUpperCase());
+  }).join(' ');
+}
+const sameLetters = (a,b)=> a.toLowerCase().replace(/\s+/g,' ').trim() === b.toLowerCase().replace(/\s+/g,' ').trim();
+async function fixDishCapitals(name){
+  try {
+    const ctrl = new AbortController();
+    const timer = setTimeout(()=>ctrl.abort(), 8000);
+    const resp = await fetch('/api/dish-info', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ type:'name', name }), signal: ctrl.signal
+    });
+    clearTimeout(timer);
+    const data = await resp.json();
+    const fixed = String(data.name || '').replace(/\s+/g,' ').trim();
+    if(resp.ok && fixed && sameLetters(fixed, name)) return fixed;
+  } catch(e){ console.warn('Capitalisation check failed, using local title case', e); }
+  return titleCaseLocal(name);
+}
+
 document.getElementById('ndSave').addEventListener('click', async ()=>{
   const nameIn = document.getElementById('ndName');
   const detailIn = document.getElementById('ndDetail');
@@ -1205,13 +1234,19 @@ document.getElementById('ndSave').addEventListener('click', async ()=>{
   if(!name){ showToast('Enter a dish name', 'error'); nameIn.focus(); return; }
   const btn = document.getElementById('ndSave'); btn.disabled = true;
   const existed = dishByName(name);
-  const d = await createDish(name, detail);
+  let finalName = name;
+  if(!existed){
+    btn.textContent = 'Fixing capitals...';
+    finalName = await fixDishCapitals(name);
+  }
+  btn.textContent = 'Save dish';
+  const d = await createDish(finalName, detail);
   btn.disabled = false;
   if(!d) return;
   if(existed){
     showToast(`"${existed.name}" is already in the library`);
     if(detail && !existed.detail) updateDishDetail(existed.id, detail);
-  } else showToast(`"${d.name}" added to library`);
+  } else showToast(finalName !== name ? `Saved as "${d.name}"` : `"${d.name}" added to library`);
   if(!ndAddedNames.includes(d.name)) ndAddedNames.push(d.name);
   renderNdAdded();
   if(ndOnSaved) ndOnSaved(d);
@@ -1247,6 +1282,92 @@ document.getElementById('openLibraryBtn').addEventListener('click', ()=>{
   setTimeout(()=>document.getElementById('libSearch').focus(), 30);
 });
 document.getElementById('libSearch').addEventListener('input', ()=>{ libEditingId=null; renderLibraryList(); });
+/* ---------- Fix capitals for every dish already in the library ----------
+   Dish ids are based on the lowercase name, so only the "name" field changes.
+   Saved clients and the menu on screen are updated to the new spelling too. */
+async function fixCapsBatch(names){
+  try {
+    const resp = await fetch('/api/dish-info', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ type:'name', names })
+    });
+    const data = await resp.json();
+    if(resp.ok && Array.isArray(data.names)){
+      return names.map((n,i)=>{
+        const f = String(data.names[i] || '').replace(/\s+/g,' ').trim();
+        return f && sameLetters(f, n) ? f : titleCaseLocal(n);
+      });
+    }
+  } catch(e){ console.warn('Batch capitalisation failed, using local title case', e); }
+  return names.map(titleCaseLocal);
+}
+
+document.getElementById('libFixCapsBtn').addEventListener('click', async ()=>{
+  const all = [...library.values()];
+  if(!all.length){ showToast('The library is empty', 'error'); return; }
+  const btn = document.getElementById('libFixCapsBtn');
+  btn.disabled = true;
+
+  const changes = []; // { dish, from, to }
+  for(let i=0; i<all.length; i+=40){
+    btn.textContent = `Checking ${Math.min(i+40, all.length)} of ${all.length}...`;
+    const chunk = all.slice(i, i+40);
+    const fixed = await fixCapsBatch(chunk.map(d=>d.name));
+    chunk.forEach((d,k)=>{ if(fixed[k] && fixed[k] !== d.name) changes.push({ dish:d, from:d.name, to:fixed[k] }); });
+  }
+  btn.textContent = 'Fix capitals'; btn.disabled = false;
+
+  if(!changes.length){ showToast('All dish names already look right'); return; }
+  const sample = changes.slice(0,8).map(c=>`${c.from}  ->  ${c.to}`).join('\n');
+  const more = changes.length > 8 ? `\n...and ${changes.length-8} more` : '';
+  if(!confirm(`Rename ${changes.length} dish${changes.length>1?'es':''}?\n\n${sample}${more}\n\nSaved clients will be updated to the new names too.`)) return;
+
+  btn.disabled = true; btn.textContent = 'Saving...';
+  const map = new Map(changes.map(c=>[norm(c.from), c.to]));
+  const rename = n => map.get(norm(n)) || n;
+
+  // 1. Library
+  changes.forEach(c=>{ c.dish.name = c.to; });
+  // 2. Menu on screen
+  days.forEach(d=>d.meals.forEach(m=>m.subcats.forEach(sc=>{ sc.dishes = sc.dishes.map(rename); })));
+  renderAll();
+  onLibraryChanged();
+
+  if(db){
+    try {
+      // Firestore batches hold up to 500 writes
+      const writes = changes.map(c=>[db.collection('dishes').doc(c.dish.id), { name:c.to }]);
+      let clientCount = 0;
+      const snap = await db.collection('clients').get();
+      snap.forEach(doc=>{
+        const data = doc.data(); let touched = false;
+        (data.days||[]).forEach(day=>(day.meals||[]).forEach(meal=>{
+          (meal.subcats||[]).forEach(sc=>{
+            const next = (sc.dishes||[]).map(rename);
+            if(next.some((n,i)=>n!==sc.dishes[i])){ sc.dishes = next; touched = true; }
+          });
+          if(Array.isArray(meal.dishes)){
+            const next = meal.dishes.map(rename);
+            if(next.some((n,i)=>n!==meal.dishes[i])){ meal.dishes = next; touched = true; }
+          }
+        }));
+        if(touched){ writes.push([doc.ref || db.collection('clients').doc(doc.id), { days:data.days }]); clientCount++; }
+      });
+      for(let i=0; i<writes.length; i+=450){
+        const batch = db.batch();
+        writes.slice(i,i+450).forEach(([ref,upd])=>batch.update(ref, upd));
+        await batch.commit();
+      }
+      showToast(`Renamed ${changes.length} dish${changes.length>1?'es':''}` + (clientCount ? ` and updated ${clientCount} saved client${clientCount>1?'s':''}` : ''));
+      loadClientList();
+    } catch(e){
+      console.error('Rename failed', e);
+      showToast('Some names were not saved: ' + e.message, 'error');
+    }
+  } else showToast(`Renamed ${changes.length} dishes for this session`);
+  btn.textContent = 'Fix capitals'; btn.disabled = false;
+});
+
 document.getElementById('libNewBtn').addEventListener('click', ()=>{
   openNewDishDialog(document.getElementById('libSearch').value.trim(), ()=>renderLibraryList());
 });
