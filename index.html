@@ -256,7 +256,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 .bs-qr-side{flex:1;min-width:180px;display:flex;flex-direction:column;gap:8px;}
 .bs-qr-side .hint{font-size:12px;color:var(--ink-soft);line-height:1.4;}
 .bs-warn{font-size:11.5px;color:var(--terracotta);margin-top:4px;}
-@media(max-width:600px){ .bs-grid{grid-template-columns:1fr;} }
+.bs-profile{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;background:#f6f1e4;border:1px solid var(--rule);border-radius:10px;padding:12px 14px 2px;margin-bottom:14px;}
+.bs-profile .hint{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+.summary-bar select.quote-pick{width:auto;max-width:190px;padding:10px 12px;font-size:13px;}
+@media(max-width:600px){ .bs-grid,.bs-profile{grid-template-columns:1fr;} .summary-bar .save-row select.quote-pick{grid-column:1/-1;max-width:none;width:100%;} }
 
 /* Preview */
 .pv{position:fixed;inset:0;z-index:70;background:#d8d1c1;display:flex;flex-direction:column;}
@@ -424,6 +427,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
   </div>
   <div class="summary-row save-row">
     <button class="btn btn-save" id="saveBtn" onclick="saveClient()">☁ Save Client</button>
+    <select id="quoteProfileSelect" class="quote-pick" aria-label="Quotation details to print" title="Quotation details printed on the quotation PDF"></select>
     <button class="btn btn-saffron" id="pdfQuoteBtn" disabled>Quotation PDF</button>
     <button class="btn btn-saffron" id="pdfMenuBtn" disabled>Preview Menu PDF</button>
   </div>
@@ -496,7 +500,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
       <h2 id="bizTitle">Quotation details</h2>
       <button class="btn btn-ghost btn-sm" data-close>Close</button>
     </div>
-    <p class="modal-sub">These are saved to the cloud and printed on every quotation PDF. Leave a field empty to keep it off the PDF.</p>
+    <p class="modal-sub">Save as many sets of details as you need, each with its own name. Pick which set to print next to the Quotation PDF button. Leave a field empty to keep it off the PDF.</p>
+
+    <div class="bs-profile">
+      <div class="field">
+        <label for="bsProfile">Saved details</label>
+        <select id="bsProfile"></select>
+      </div>
+      <div class="field">
+        <label for="bsName">Name for this set</label>
+        <input type="text" id="bsName" maxlength="60" placeholder="e.g. GST account">
+        <div class="hint">Only you see this name. It is not printed.</div>
+      </div>
+    </div>
 
     <div class="field">
       <label for="bsGstin">GST number (GSTIN)</label>
@@ -539,7 +555,10 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     </div>
 
     <div class="modal-actions">
+      <button class="btn btn-danger" id="bsDelete" type="button" hidden>Delete</button>
+      <button class="btn btn-ghost" id="bsDetailsPdf" type="button">Download details PDF</button>
       <button class="btn btn-ghost" id="bsPreviewQuote" type="button">Download sample quotation</button>
+      <button class="btn btn-ghost" id="bsSaveNew" type="button" hidden>Save as new</button>
       <button class="btn btn-primary" id="bsSave" type="button">Save details</button>
     </div>
   </div>
@@ -2150,7 +2169,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     doc.text(tFit.lines, W/2, ty, {align:'center', lineHeightFactor:1.6});
   }
   // contact details
-  const cY = style==='serene' ? H-120 : H-118;
+  const cY = style==='serene' ? H-96 : H-88;
   if(style!=='modern') ornament(cY-30, 40);
   font(F, 'bold', style==='modern' ? 12 : 14, C.text);
   doc.text(PHONES.join('     |     '), W/2, cY, {align:'center'});
@@ -2356,18 +2375,68 @@ const BIZ_FIELDS = {
 };
 const SAMPLE_QUOTE_DAYS = [{ label:'Day 1', date:'', meals:[{ label:'Lunch', startTime:'12:30', endTime:'15:00', pax:'200', price:'450',
   subcats:[{ name:'Main course', dishes:['Paneer Butter Masala','Dal Makhani','Jeera Rice','Butter Naan'] }, { name:'Dessert', dishes:['Gulab Jamun'] }] }] }];
-let biz = { qrImage:'' };
+const BIZ_NAME = 'Shakti Catering & Events';
+const BIZ_PHONES = ['8934020403', '9889815000'];
+const BIZ_ADDRESS = 'Infront of Pillar No 9, Near Haryana Transport, Transport Nagar, Gorakhpur - 273016';
+
+/* Saved sets of quotation details — Firestore collection "quoteProfiles" */
+let quoteProfiles = [];      // [{ id, name, gstin, upiId, ..., qrImage }]
+let currentQuoteId = '';     // set printed on the quotation PDF
+let editQuoteId = '';        // set open in the dialog ('' = new, not saved yet)
+let quoteSeeded = false;
 let bizDraftQr = '';
 let bizDirty = false;
+try { currentQuoteId = localStorage.getItem('quoteProfileId') || ''; } catch(e){}
+
+function bizFor(id){ return quoteProfiles.find(p=>p.id===id) || quoteProfiles[0] || { qrImage:'' }; }
+function setCurrentQuote(id){
+  currentQuoteId = id || '';
+  try { localStorage.setItem('quoteProfileId', currentQuoteId); } catch(e){}
+  renderQuotePickers();
+}
+function renderQuotePickers(){
+  if(!quoteProfiles.find(p=>p.id===currentQuoteId)) currentQuoteId = quoteProfiles[0]?.id || '';
+  const main = document.getElementById('quoteProfileSelect');
+  main.innerHTML = quoteProfiles.length
+    ? quoteProfiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name || 'Untitled')}</option>`).join('')
+    : '<option value="">No quotation details</option>';
+  main.value = currentQuoteId;
+  main.disabled = !quoteProfiles.length;
+  const pick = document.getElementById('bsProfile');
+  pick.innerHTML = quoteProfiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name || 'Untitled')}</option>`).join('')
+    + '<option value="__new">+ New set of details</option>';
+  pick.value = editQuoteId || '__new';
+}
+document.getElementById('quoteProfileSelect').addEventListener('change', e=>setCurrentQuote(e.target.value));
 
 function subscribeBiz(){
+  renderQuotePickers();
   if(!db) return;
-  db.collection('settings').doc('business').onSnapshot(snap=>{
-    biz = snap.exists ? { qrImage:'', ...snap.data() } : { qrImage:'' };
-    if(!document.getElementById('bizModal').hidden && !bizDirty) fillBizForm();
-  }, err=>{
-    console.error('Business details error:', err);
-    showToast('Could not load quotation details: ' + err.message, 'error');
+  db.collection('quoteProfiles').onSnapshot(async snap=>{
+    if(snap.empty && !quoteSeeded){
+      quoteSeeded = true;
+      // First run: move the old single set (settings/business) into a saved set called "Default"
+      try {
+        const old = await db.collection('settings').doc('business').get();
+        if(old.exists){
+          await db.collection('quoteProfiles').doc('default').set({ qrImage:'', ...old.data(), name:'Default' });
+          return;   // the snapshot fires again with the new set
+        }
+      } catch(e){ console.error('Moving old quotation details failed', e); }
+    }
+    quoteProfiles = [];
+    snap.forEach(d=>quoteProfiles.push({ qrImage:'', ...d.data(), id:d.id }));
+    quoteProfiles.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+    renderQuotePickers();
+    if(!document.getElementById('bizModal').hidden && !bizDirty) fillBizForm(editQuoteId);
+  }, async err=>{
+    console.error('Quotation details error:', err);
+    showToast('Could not load saved quotation details. Check that Firestore rules allow the "quoteProfiles" collection.', 'error');
+    // fall back to the old single set so quotations still print
+    try {
+      const old = await db.collection('settings').doc('business').get();
+      if(old.exists){ quoteProfiles = [{ qrImage:'', ...old.data(), name:'Default', id:'default' }]; renderQuotePickers(); }
+    } catch(e){}
   });
 }
 
@@ -2380,10 +2449,18 @@ function makeQr(text){
   catch(e){ console.error('QR failed', e); return null; }
 }
 
-function fillBizForm(){
-  Object.entries(BIZ_FIELDS).forEach(([k,id])=>{ document.getElementById(id).value = biz[k] || ''; });
-  bizDraftQr = biz.qrImage || '';
+function fillBizForm(id){
+  const p = quoteProfiles.find(x=>x.id===id);
+  editQuoteId = p ? p.id : '';
+  const src = p || {};
+  Object.entries(BIZ_FIELDS).forEach(([k,fid])=>{ document.getElementById(fid).value = src[k] || ''; });
+  document.getElementById('bsName').value = p ? (p.name || '') : '';
+  bizDraftQr = src.qrImage || '';
   bizDirty = false;
+  document.getElementById('bsProfile').value = editQuoteId || '__new';
+  document.getElementById('bsDelete').hidden = !p;
+  document.getElementById('bsSaveNew').hidden = !p;
+  document.getElementById('bsSave').textContent = p ? 'Save changes' : 'Save details';
   refreshBizForm();
 }
 function readBizForm(){
@@ -2415,9 +2492,16 @@ function refreshBizForm(){
 }
 
 document.getElementById('openBizBtn').addEventListener('click', ()=>{
-  openModal('bizModal'); fillBizForm();
+  openModal('bizModal'); renderQuotePickers(); fillBizForm(currentQuoteId);
 });
 Object.values(BIZ_FIELDS).forEach(id=>document.getElementById(id).addEventListener('input', ()=>{ bizDirty = true; refreshBizForm(); }));
+document.getElementById('bsName').addEventListener('input', ()=>{ bizDirty = true; });
+document.getElementById('bsProfile').addEventListener('change', e=>{
+  if(bizDirty && !confirm('You have unsaved changes. Discard them?')){ e.target.value = editQuoteId || '__new'; return; }
+  const id = e.target.value === '__new' ? '' : e.target.value;
+  fillBizForm(id);
+  if(!id) setTimeout(()=>document.getElementById('bsName').focus(), 30);
+});
 document.getElementById('bsQrUpload').addEventListener('click', ()=>document.getElementById('bsQrFile').click());
 document.getElementById('bsQrRemove').addEventListener('click', ()=>{ bizDraftQr=''; bizDirty=true; refreshBizForm(); });
 document.getElementById('bsQrFile').addEventListener('change', async e=>{
@@ -2455,14 +2539,47 @@ function shrinkImage(file, max){
   });
 }
 
-document.getElementById('bsSave').addEventListener('click', async ()=>{
-  const data = { ...readBizForm(), updatedAt:new Date().toISOString() };
-  biz = data; bizDirty = false;
+async function saveBizProfile(asNew){
+  const nameEl = document.getElementById('bsName');
+  const name = nameEl.value.replace(/\s+/g,' ').trim();
+  if(!name){ showToast('Give this set a name, e.g. "GST account"', 'error'); nameEl.focus(); return; }
+  const id = (!asNew && editQuoteId) ? editQuoteId : 'q_' + uid() + uid();
+  if(quoteProfiles.some(p=>p.id!==id && norm(p.name)===norm(name))){
+    showToast(`A set named "${name}" already exists. Use a different name.`, 'error'); nameEl.focus(); return;
+  }
+  const data = { ...readBizForm(), name, updatedAt:new Date().toISOString() };
+  const idx = quoteProfiles.findIndex(p=>p.id===id);
+  if(idx >= 0) quoteProfiles[idx] = { ...data, id }; else quoteProfiles.push({ ...data, id });
+  quoteProfiles.sort((a,b)=>String(a.name||'').localeCompare(String(b.name||'')));
+  editQuoteId = id; bizDirty = false;
+  setCurrentQuote(id);
+  fillBizForm(id);
   if(!db){ showToast('Saved for this session only (cloud not connected)', 'error'); return; }
-  const btn = document.getElementById('bsSave'); btn.disabled = true;
-  try { await db.collection('settings').doc('business').set(data); showToast('Quotation details saved'); }
+  const btns = ['bsSave','bsSaveNew'].map(x=>document.getElementById(x));
+  btns.forEach(b=>b.disabled = true);
+  try { await db.collection('quoteProfiles').doc(id).set(data); showToast(`"${name}" saved`); }
   catch(e){ showToast('Save failed: ' + e.message, 'error'); }
-  btn.disabled = false;
+  btns.forEach(b=>b.disabled = false);
+}
+document.getElementById('bsSave').addEventListener('click', ()=>saveBizProfile(false));
+document.getElementById('bsSaveNew').addEventListener('click', ()=>saveBizProfile(true));
+document.getElementById('bsDelete').addEventListener('click', async ()=>{
+  const p = quoteProfiles.find(x=>x.id===editQuoteId);
+  if(!p) return;
+  if(!confirm(`Delete the saved details "${p.name}"?`)) return;
+  quoteProfiles = quoteProfiles.filter(x=>x.id!==p.id);
+  renderQuotePickers();
+  fillBizForm(currentQuoteId);
+  if(db){
+    try { await db.collection('quoteProfiles').doc(p.id).delete(); showToast(`"${p.name}" deleted`); }
+    catch(e){ showToast('Delete failed: ' + e.message, 'error'); }
+  }
+});
+document.getElementById('bsDetailsPdf').addEventListener('click', ()=>{
+  const B = readBizForm();
+  const has = Object.keys(BIZ_FIELDS).some(k=>B[k]) || B.qrImage;
+  if(!has){ showToast('Fill in at least one detail first', 'error'); return; }
+  generateDetailsPDF(B, document.getElementById('bsName').value.trim());
 });
 document.getElementById('bsPreviewQuote').addEventListener('click', ()=>{
   const useSample = !days.length || !allMenuDishes().length;
@@ -2474,8 +2591,108 @@ document.getElementById('bsPreviewQuote').addEventListener('click', ()=>{
    ========================================================================= */
 document.getElementById('pdfQuoteBtn').addEventListener('click', ()=>generateQuotePDF());
 
+/* Draws the uploaded QR image, or a QR made from the UPI ID, in a square box. */
+function drawPayQr(doc, B, qrObj, qx, qy, size){
+  if(B.qrImage){
+    const fmt = B.qrImage.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+    try {
+      const props = doc.getImageProperties(B.qrImage);
+      const r = Math.min(size/props.width, size/props.height);
+      const iw = props.width*r, ih = props.height*r;
+      doc.addImage(B.qrImage, fmt, qx + (size-iw)/2, qy + (size-ih)/2, iw, ih);
+    } catch(e){ console.error('QR image', e); }
+  } else if(qrObj){
+    const n = qrObj.getModuleCount(), quiet = 2, cell = size/(n + quiet*2);
+    doc.setFillColor(255,255,255); doc.rect(qx, qy, size, size, 'F');
+    doc.setFillColor(0,0,0);
+    for(let r=0;r<n;r++) for(let c=0;c<n;c++){
+      if(qrObj.isDark(r,c)) doc.rect(qx + (c+quiet)*cell, qy + (r+quiet)*cell, cell+0.05, cell+0.05, 'F');
+    }
+  }
+}
+
+/* =========================================================================
+   PDF — QUOTATION DETAILS ONLY (logo, company name, GSTIN, UPI, bank)
+   ========================================================================= */
+function generateDetailsPDF(B, setName){
+  const { jsPDF } = window.jspdf;
+  const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const W = doc.internal.pageSize.getWidth();
+  const H = doc.internal.pageSize.getHeight();
+  const mx = 50;
+  const inkRGB=[35,32,25], saffRGB=[157,106,28], softRGB=[110,102,84], ruleRGB=[205,194,168];
+
+  // Heading: logo + company name
+  const logo = drawLogo(doc, W/2-85, 40, 170, 90, 'center', 'middle');
+  let y = (logo ? logo.y + logo.h : 130) + 34;
+  doc.setFont('times','bold'); doc.setFontSize(26); doc.setTextColor(...inkRGB);
+  doc.text(BIZ_NAME, W/2, y, {align:'center'});
+  y += 20;
+  doc.setFont('helvetica','normal'); doc.setFontSize(9.5); doc.setTextColor(...softRGB);
+  doc.text(BIZ_ADDRESS, W/2, y, {align:'center', maxWidth:W-2*mx});
+  y += 14;
+  doc.text('Phone: ' + BIZ_PHONES.join('  |  '), W/2, y, {align:'center'});
+  y += 18;
+  doc.setDrawColor(...saffRGB); doc.setLineWidth(1.5); doc.line(mx, y, W-mx, y);
+  y += 36;
+  doc.setFont('times','bold'); doc.setFontSize(18); doc.setTextColor(...inkRGB);
+  doc.text('Payment Details', W/2, y, {align:'center'});
+  y += 34;
+
+  const section = title=>{
+    doc.setFont('times','bold'); doc.setFontSize(14); doc.setTextColor(...inkRGB);
+    doc.text(title, mx, y);
+    doc.setDrawColor(...ruleRGB); doc.setLineWidth(.6); doc.line(mx, y+7, W-mx, y+7);
+    y += 28;
+  };
+  const row = (label, value, maxW)=>{
+    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...softRGB);
+    doc.text(label, mx, y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(11.5); doc.setTextColor(...inkRGB);
+    const lines = doc.splitTextToSize(pdfSafe(value), maxW || (W - mx*2 - 120));
+    doc.text(lines, mx+120, y);
+    y += 20 + (lines.length-1)*14;
+  };
+
+  if(B.gstin){ section('Tax details'); row('GSTIN', B.gstin); y += 14; }
+
+  const qrObj = B.qrImage ? null : (B.upiId ? makeQr(upiLink(B.upiId, B.upiName)) : null);
+  const hasQr = !!(B.qrImage || qrObj);
+  if(B.upiId || hasQr){
+    section('UPI');
+    const qrSize = 130, top = y - 12;
+    const textW = W - mx*2 - 120 - (hasQr ? qrSize + 20 : 0);
+    if(B.upiId) row('UPI ID', B.upiId, textW);
+    if(B.upiName) row('Pay to', B.upiName, textW);
+    if(hasQr){
+      const qx = W - mx - qrSize;
+      drawPayQr(doc, B, qrObj, qx, top, qrSize);
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...softRGB);
+      doc.text('Scan to pay with any UPI app', qx + qrSize/2, top + qrSize + 14, {align:'center'});
+      y = Math.max(y, top + qrSize + 26);
+    }
+    y += 14;
+  }
+
+  const bankRows = [
+    ['Account name', B.bankHolder], ['Bank', B.bankName], ['Account no.', B.bankAcc],
+    ['IFSC', B.bankIfsc], ['Branch', B.bankBranch], ['Account type', B.bankType]
+  ].filter(r=>r[1] && String(r[1]).trim());
+  if(bankRows.length){
+    if(y + 30 + bankRows.length*20 > H - 60){ doc.addPage(); y = 60; }
+    section('Bank account');
+    bankRows.forEach(([l,v])=>row(l, v));
+  }
+
+  doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(...softRGB);
+  doc.text(`${BIZ_NAME} | ${BIZ_PHONES.join(' | ')}`, W/2, H-28, {align:'center'});
+
+  const safe = String(setName || 'Details').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'') || 'Details';
+  doc.save(`Payment_Details_${safe}.pdf`);
+}
+
 function generateQuotePDF(details, sample=false){
-  const B = details || biz || {};
+  const B = details || bizFor(currentQuoteId) || {};
   const qDays = sample ? SAMPLE_QUOTE_DAYS : days;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
@@ -2612,22 +2829,7 @@ function generateQuotePDF(details, sample=false){
     });
     if(hasQr){
       const qx = W - mx - qrSize, qy = y + 16;
-      if(B.qrImage){
-        const fmt = B.qrImage.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
-        try {
-          const props = doc.getImageProperties(B.qrImage);
-          const r = Math.min(qrSize/props.width, qrSize/props.height);
-          const iw = props.width*r, ih = props.height*r;
-          doc.addImage(B.qrImage, fmt, qx + (qrSize-iw)/2, qy + (qrSize-ih)/2, iw, ih);
-        } catch(e){ console.error('QR image', e); }
-      } else {
-        const n = qrObj.getModuleCount(), quiet = 2, cell = qrSize/(n + quiet*2);
-        doc.setFillColor(255,255,255); doc.rect(qx, qy, qrSize, qrSize, 'F');
-        doc.setFillColor(0,0,0);
-        for(let r=0;r<n;r++) for(let c=0;c<n;c++){
-          if(qrObj.isDark(r,c)) doc.rect(qx + (c+quiet)*cell, qy + (r+quiet)*cell, cell+0.05, cell+0.05, 'F');
-        }
-      }
+      drawPayQr(doc, B, qrObj, qx, qy, qrSize);
       doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...softRGB);
       doc.text('Scan to pay with any UPI app', qx + qrSize/2, qy + qrSize + 13, { align:'center' });
     }
@@ -2654,6 +2856,7 @@ function serializeState(){
     venue: document.getElementById('venue').value.trim(),
     numDays: days.length,
     moodId: currentMoodId,
+    quoteProfileId: currentQuoteId,
     savedAt: new Date().toISOString(),
     days: days.map(d => ({
       label: d.label,
@@ -2675,6 +2878,7 @@ function deserializeState(data){
   document.getElementById('venue').value = data.venue || '';
   document.getElementById('numDays').value = data.numDays || 1;
   if(data.moodId && moods.find(m=>m.id===data.moodId)) currentMoodId = data.moodId;
+  if(data.quoteProfileId && quoteProfiles.find(p=>p.id===data.quoteProfileId)) setCurrentQuote(data.quoteProfileId);
   renderMoodSelects();
   days = (data.days || []).map(d => ({
     label: d.label || 'Day',
