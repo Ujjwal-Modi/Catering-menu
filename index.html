@@ -10,6 +10,7 @@
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-app-compat.js"></script>
 <script src="https://www.gstatic.com/firebasejs/10.12.2/firebase-firestore-compat.js"></script>
 <style>
@@ -50,7 +51,12 @@ body.no-scroll{overflow:hidden;}
 .card{background:var(--card);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--shadow);padding:22px 22px 20px;margin-bottom:24px;}
 
 /* Setup */
-.setup-grid{display:grid;grid-template-columns:2fr .7fr 1.4fr auto;gap:16px;align-items:end;}
+.setup-grid{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;align-items:end;}
+.setup-grid .span2{grid-column:span 2;}
+.client-search{display:grid;grid-template-columns:1.6fr 1fr auto;gap:10px;align-items:end;margin-bottom:12px;}
+.client-search .btn{height:38px;}
+.client-search-note{font-size:12.5px;color:var(--ink-soft);margin:-4px 0 10px;}
+.client-card-venue{font-size:11.5px;color:var(--ink-soft);margin-top:1px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
 .label-row{display:flex;justify-content:space-between;align-items:baseline;gap:8px;}
 .link-btn{background:none;border:none;color:var(--saffron-deep);font:600 11.5px 'Work Sans',sans-serif;cursor:pointer;text-decoration:underline;text-underline-offset:3px;padding:0 2px;margin-bottom:5px;}
 
@@ -76,6 +82,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 .btn-danger{background:transparent;color:var(--terracotta);border:1px solid #e0c0b4;}
 .btn-danger:hover{background:#fdf5f2;}
 .btn:disabled{opacity:.4;cursor:not-allowed;}
+.btn[hidden]{display:none;}
 
 /* Day card */
 .day{background:var(--card);border:1px solid var(--rule);border-radius:14px;box-shadow:var(--shadow);margin-bottom:24px;position:relative;}
@@ -232,6 +239,19 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 .style-card span{font-size:11.5px;color:var(--ink-soft);line-height:1.35;display:block;margin-top:2px;}
 .style-card.active{border-color:var(--saffron-deep);background:#f6f1e4;box-shadow:inset 0 0 0 1px var(--saffron-deep);}
 
+/* Quotation details */
+.bs-section{border-top:1px dashed var(--rule);padding-top:14px;margin-top:4px;}
+.bs-section h3{font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin-bottom:10px;}
+.bs-grid{display:grid;grid-template-columns:1fr 1fr;gap:0 14px;}
+.bs-qr{display:flex;gap:14px;align-items:flex-start;flex-wrap:wrap;}
+.bs-qr-box{width:132px;height:132px;border:1px dashed var(--rule);border-radius:9px;background:#fff;display:flex;align-items:center;justify-content:center;overflow:hidden;flex-shrink:0;}
+.bs-qr-box img{max-width:100%;max-height:100%;display:block;image-rendering:pixelated;}
+.bs-qr-box span{font-size:11.5px;color:#a69c84;text-align:center;padding:8px;font-style:italic;}
+.bs-qr-side{flex:1;min-width:180px;display:flex;flex-direction:column;gap:8px;}
+.bs-qr-side .hint{font-size:12px;color:var(--ink-soft);line-height:1.4;}
+.bs-warn{font-size:11.5px;color:var(--terracotta);margin-top:4px;}
+@media(max-width:600px){ .bs-grid{grid-template-columns:1fr;} }
+
 /* Preview */
 .pv{position:fixed;inset:0;z-index:70;background:#d8d1c1;display:flex;flex-direction:column;}
 .pv[hidden]{display:none;}
@@ -268,8 +288,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 /* Mobile */
 @media(max-width:780px){
   .setup-grid{grid-template-columns:1fr 1fr;gap:12px;}
-  .setup-grid > :first-child{grid-column:1 / -1;}
+  .setup-grid .span2{grid-column:1 / -1;}
+  .setup-grid .build-cell{grid-column:1 / -1;}
   .setup-grid .btn{width:100%;justify-content:center;}
+  .client-search{grid-template-columns:1fr 1fr;}
+  .client-search .search-name{grid-column:1 / -1;}
   .mood-layout{grid-template-columns:1fr;}
   .mood-list{flex-direction:row;flex-wrap:wrap;}
   .style-cards{grid-template-columns:1fr;}
@@ -324,11 +347,24 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <div class="hero-tools">
       <button class="btn btn-ghost btn-sm" id="openLibraryBtn">Dish library <span id="libCountBadge" class="meal-count zero">0</span></button>
       <button class="btn btn-ghost btn-sm" id="openMoodsBtn">PDF moods</button>
+      <button class="btn btn-ghost btn-sm" id="openBizBtn">Quotation details</button>
     </div>
   </div>
 
   <div class="saved-clients" id="savedClientsSection">
     <h3>Saved Clients</h3>
+    <div class="client-search">
+      <div class="search-name">
+        <label for="clientSearchName">Search by name</label>
+        <input type="search" id="clientSearchName" placeholder="Client name">
+      </div>
+      <div>
+        <label for="clientSearchDate">Search by date</label>
+        <input type="date" id="clientSearchDate">
+      </div>
+      <button class="btn btn-ghost btn-sm" id="clientSearchClear" type="button">Clear</button>
+    </div>
+    <div class="client-search-note" id="clientSearchNote" hidden></div>
     <div class="client-list" id="clientList">
       <div class="no-clients" id="noClients">Loading saved clients...</div>
     </div>
@@ -336,23 +372,27 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 
   <div class="card setup">
     <div class="setup-grid">
-      <div>
+      <div class="span2">
         <label for="clientName">Client name</label>
         <input type="text" id="clientName" placeholder="e.g. Sri Sanjay Chaparia Ji">
+      </div>
+      <div class="span2">
+        <label for="venue">Venue</label>
+        <input type="text" id="venue" placeholder="e.g. Hotel Radisson, Gorakhpur">
       </div>
       <div>
         <label for="numDays">No. of days</label>
         <input type="number" id="numDays" min="1" max="14" value="1">
       </div>
-      <div>
+      <div class="span2">
         <div class="label-row">
           <label for="moodSelect">Menu mood</label>
           <button class="link-btn" id="editMoodsLink" type="button">Edit moods</button>
         </div>
         <select id="moodSelect"></select>
       </div>
-      <div>
-        <button class="btn btn-primary" id="buildBtn">Build days</button>
+      <div class="build-cell">
+        <button class="btn btn-primary" id="buildBtn" style="width:100%;justify-content:center;">Build days</button>
       </div>
     </div>
   </div>
@@ -442,6 +482,62 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
         <button class="btn btn-ghost btn-sm" id="moodNewBtn" style="margin-top:10px;width:100%;justify-content:center;">+ New mood</button>
       </div>
       <div class="mood-form" id="moodForm"></div>
+    </div>
+  </div>
+</div>
+
+<!-- Quotation details -->
+<div class="modal" id="bizModal" hidden>
+  <div class="modal-panel" role="dialog" aria-modal="true" aria-labelledby="bizTitle">
+    <div class="modal-head">
+      <h2 id="bizTitle">Quotation details</h2>
+      <button class="btn btn-ghost btn-sm" data-close>Close</button>
+    </div>
+    <p class="modal-sub">These are saved to the cloud and printed on every quotation PDF. Leave a field empty to keep it off the PDF.</p>
+
+    <div class="field">
+      <label for="bsGstin">GST number (GSTIN)</label>
+      <input type="text" id="bsGstin" maxlength="15" placeholder="e.g. 09ABCDE1234F1Z5" style="text-transform:uppercase">
+      <div class="bs-warn" id="bsGstinWarn" hidden>A GSTIN is usually 15 characters, like 09ABCDE1234F1Z5. Please double-check it.</div>
+    </div>
+
+    <div class="bs-section">
+      <h3>UPI</h3>
+      <div class="bs-grid">
+        <div class="field"><label for="bsUpiId">UPI ID</label><input type="text" id="bsUpiId" placeholder="e.g. shakticatering@okhdfcbank"></div>
+        <div class="field"><label for="bsUpiName">Name shown when paying</label><input type="text" id="bsUpiName" placeholder="e.g. Shakti Catering & Events"></div>
+      </div>
+      <div class="field">
+        <label>UPI QR code</label>
+        <div class="bs-qr">
+          <div class="bs-qr-box" id="bsQrBox"><span>No QR yet</span></div>
+          <div class="bs-qr-side">
+            <input type="file" id="bsQrFile" accept="image/*" hidden>
+            <div style="display:flex;gap:8px;flex-wrap:wrap;">
+              <button class="btn btn-ghost btn-sm" id="bsQrUpload" type="button">Upload QR image</button>
+              <button class="btn btn-danger btn-sm" id="bsQrRemove" type="button" hidden>Remove image</button>
+            </div>
+            <div class="hint" id="bsQrHint"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="bs-section">
+      <h3>Bank details</h3>
+      <div class="bs-grid">
+        <div class="field"><label for="bsBankHolder">Account holder name</label><input type="text" id="bsBankHolder" placeholder="e.g. Shakti Catering & Events"></div>
+        <div class="field"><label for="bsBankName">Bank name</label><input type="text" id="bsBankName" placeholder="e.g. State Bank of India"></div>
+        <div class="field"><label for="bsBankAcc">Account number</label><input type="text" id="bsBankAcc" inputmode="numeric" placeholder="e.g. 12345678901"></div>
+        <div class="field"><label for="bsBankIfsc">IFSC code</label><input type="text" id="bsBankIfsc" maxlength="11" placeholder="e.g. SBIN0001234" style="text-transform:uppercase"><div class="bs-warn" id="bsIfscWarn" hidden>An IFSC code is 11 characters, like SBIN0001234.</div></div>
+        <div class="field"><label for="bsBankBranch">Branch</label><input type="text" id="bsBankBranch" placeholder="e.g. Transport Nagar, Gorakhpur"></div>
+        <div class="field"><label for="bsBankType">Account type</label><input type="text" id="bsBankType" placeholder="e.g. Current"></div>
+      </div>
+    </div>
+
+    <div class="modal-actions">
+      <button class="btn btn-ghost" id="bsPreviewQuote" type="button">Download sample quotation</button>
+      <button class="btn btn-primary" id="bsSave" type="button">Save details</button>
     </div>
   </div>
 </div>
@@ -1140,7 +1236,7 @@ document.querySelectorAll('.modal').forEach(m=>m.addEventListener('mousedown', e
 document.addEventListener('keydown', e=>{
   if(e.key!=='Escape') return;
   if(!document.getElementById('newDishModal').hidden) return closeNewDish();
-  for(const id of ['moodModal','libraryModal']) if(!document.getElementById(id).hidden) return closeModal(id);
+  for(const id of ['bizModal','moodModal','libraryModal']) if(!document.getElementById(id).hidden) return closeModal(id);
 });
 
 document.getElementById('openLibraryBtn').addEventListener('click', ()=>{
@@ -1406,7 +1502,7 @@ function fmtTime12(t){
 /* =========================================================================
    PDF — MENU (mood aware)
    ========================================================================= */
-function buildMenuDoc({ clientName, days, mood, getInfo }){
+function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
   const W = doc.internal.pageSize.getWidth();
@@ -1477,6 +1573,7 @@ function buildMenuDoc({ clientName, days, mood, getInfo }){
   }
 
   const name = pdfSafe(clientName) || 'Client';
+  const venueText = pdfSafe(venue);
   const dates = days.filter(d=>d.date).map(d=>fmtDate(d.date));
   const datesText = dates.join(' - ');
   const nDays = days.length;
@@ -1503,8 +1600,9 @@ function buildMenuDoc({ clientName, days, mood, getInfo }){
     doc.ellipse(W/2, cy, 200, 110, 'FD');
     // Stack name / dates / subtitle and centre the block inside the oval
     const rows = [{ t:name, f:'bold', s:fitText(name,'times','bold',28,15,350), gap:0 }];
-    if(datesText) rows.push({ t:datesText, f:'bold', s:fitText(datesText,'times','bold',20,11,350), gap:40 });
-    if(subtitle) rows.push({ t:subtitle, f:'normal', s:16, gap:datesText ? 35 : 40 });
+    if(venueText) rows.push({ t:venueText, f:'italic', s:fitText(venueText,'times','italic',16,10,320), gap:30 });
+    if(datesText) rows.push({ t:datesText, f:'bold', s:fitText(datesText,'times','bold',20,11,350), gap:venueText ? 32 : 40 });
+    if(subtitle) rows.push({ t:subtitle, f:'normal', s:16, gap:(datesText || venueText) ? 32 : 40 });
     const span = rows.reduce((a,r)=>a+r.gap,0);
     let ry = cy - span/2 + rows[0].s*0.35;
     rows.forEach(r=>{ ry += r.gap; font('times', r.f, r.s, C.text); doc.text(r.t, W/2, ry, {align:'center'}); });
@@ -1528,7 +1626,8 @@ function buildMenuDoc({ clientName, days, mood, getInfo }){
     if(draw) ornament(y, 40); y += 48;
     font('times','bold', fitText(name,'times','bold',24,14,W-2*mx), C.text);
     T(name, W/2, y, {align:'center'});
-    if(datesText){ y += 28; font('times','normal', fitText(datesText,'times','normal',14,10,W-2*mx), C.secondary); T(datesText, W/2, y, {align:'center'}); }
+    if(venueText){ y += 24; font('times','italic', fitText(venueText,'times','italic',13.5,10,W-2*mx), C.secondary); T(venueText, W/2, y, {align:'center'}); }
+    if(datesText){ y += venueText ? 22 : 28; font('times','normal', fitText(datesText,'times','normal',14,10,W-2*mx), C.secondary); T(datesText, W/2, y, {align:'center'}); }
     if(subtitle){ y += 22; font('times','italic',12.5,C.secondary); T(subtitle, W/2, y, {align:'center'}); }
     return y;
     };
@@ -1559,6 +1658,7 @@ function buildMenuDoc({ clientName, days, mood, getInfo }){
     let y = panelH + 56;
     font('helvetica','normal',10,C.secondary); doc.text('Menu prepared for', mx, y); y += 30;
     font('helvetica','bold', fitText(name,'helvetica','bold',26,14,tw), C.text); doc.text(name, mx, y); y += 26;
+    if(venueText){ font('helvetica','normal', fitText(venueText,'helvetica','normal',13,9,tw), C.text); doc.text(venueText, mx, y); y += 20; }
     if(datesText){ font('helvetica','normal',13,C.secondary); doc.text(datesText, mx, y); y += 20; }
     if(subtitle){ font('helvetica','normal',12,C.secondary); doc.text(subtitle, mx, y); }
   }
@@ -1572,6 +1672,11 @@ function buildMenuDoc({ clientName, days, mood, getInfo }){
       if(meta) meta += ' | ';
       meta += fmtTime12(meal.startTime);
       if(meal.endTime) meta += ' - ' + fmtTime12(meal.endTime);
+    }
+    const pax = parseInt(meal.pax, 10);
+    if(pax > 0){
+      if(meta) meta += ' | ';
+      meta += `${pax.toLocaleString('en-IN')} Pax`;
     }
     return meta.trim();
   }
@@ -1736,6 +1841,7 @@ function currentMenuDoc(){
   const mood = getMood(currentMoodId);
   return buildMenuDoc({
     clientName: document.getElementById('clientName').value.trim() || 'Client',
+    venue: document.getElementById('venue').value.trim(),
     days, mood,
     getInfo: name => aiCache[aiKey(mood, name)]
   });
@@ -1912,11 +2018,138 @@ async function renderPreviewPages(){
 window.addEventListener('resize', debounce(()=>{ if(!pv.hidden) renderPreviewPages(); }, 250));
 
 /* =========================================================================
+   QUOTATION DETAILS — Firestore doc settings/business
+   { gstin, upiId, upiName, qrImage (data URL or ''), bankHolder, bankName,
+     bankAcc, bankIfsc, bankBranch, bankType, updatedAt }
+   ========================================================================= */
+const BIZ_FIELDS = {
+  gstin:'bsGstin', upiId:'bsUpiId', upiName:'bsUpiName',
+  bankHolder:'bsBankHolder', bankName:'bsBankName', bankAcc:'bsBankAcc',
+  bankIfsc:'bsBankIfsc', bankBranch:'bsBankBranch', bankType:'bsBankType'
+};
+const SAMPLE_QUOTE_DAYS = [{ label:'Day 1', date:'', meals:[{ label:'Lunch', startTime:'12:30', endTime:'15:00', pax:'200', price:'450',
+  subcats:[{ name:'Main course', dishes:['Paneer Butter Masala','Dal Makhani','Jeera Rice','Butter Naan'] }, { name:'Dessert', dishes:['Gulab Jamun'] }] }] }];
+let biz = { qrImage:'' };
+let bizDraftQr = '';
+let bizDirty = false;
+
+function subscribeBiz(){
+  if(!db) return;
+  db.collection('settings').doc('business').onSnapshot(snap=>{
+    biz = snap.exists ? { qrImage:'', ...snap.data() } : { qrImage:'' };
+    if(!document.getElementById('bizModal').hidden && !bizDirty) fillBizForm();
+  }, err=>{
+    console.error('Business details error:', err);
+    showToast('Could not load quotation details: ' + err.message, 'error');
+  });
+}
+
+function upiLink(id, name){
+  return `upi://pay?pa=${String(id).trim()}&pn=${encodeURIComponent(String(name||'Shakti Catering & Events').trim())}&cu=INR`;
+}
+function makeQr(text){
+  if(!window.qrcode || !text) return null;
+  try { const q = qrcode(0, 'M'); q.addData(text); q.make(); return q; }
+  catch(e){ console.error('QR failed', e); return null; }
+}
+
+function fillBizForm(){
+  Object.entries(BIZ_FIELDS).forEach(([k,id])=>{ document.getElementById(id).value = biz[k] || ''; });
+  bizDraftQr = biz.qrImage || '';
+  bizDirty = false;
+  refreshBizForm();
+}
+function readBizForm(){
+  const out = {};
+  Object.entries(BIZ_FIELDS).forEach(([k,id])=>{ out[k] = document.getElementById(id).value.trim(); });
+  out.gstin = out.gstin.toUpperCase();
+  out.bankIfsc = out.bankIfsc.toUpperCase();
+  out.qrImage = bizDraftQr;
+  return out;
+}
+function refreshBizForm(){
+  const f = readBizForm();
+  document.getElementById('bsGstinWarn').hidden = !f.gstin || f.gstin.length === 15;
+  document.getElementById('bsIfscWarn').hidden = !f.bankIfsc || /^[A-Z]{4}0[A-Z0-9]{6}$/.test(f.bankIfsc);
+  const box = document.getElementById('bsQrBox');
+  const hint = document.getElementById('bsQrHint');
+  document.getElementById('bsQrRemove').hidden = !f.qrImage;
+  if(f.qrImage){
+    box.innerHTML = `<img src="${f.qrImage}" alt="Uploaded UPI QR code">`;
+    hint.textContent = 'Your uploaded QR will be printed on the quotation.';
+  } else if(f.upiId){
+    const q = makeQr(upiLink(f.upiId, f.upiName));
+    box.innerHTML = q ? `<img src="${q.createDataURL(4, 2)}" alt="QR made from UPI ID">` : '<span>QR not available</span>';
+    hint.textContent = 'No image uploaded, so a QR is made from your UPI ID. Scan it with your phone once to check it opens the right account.';
+  } else {
+    box.innerHTML = '<span>No QR yet</span>';
+    hint.textContent = 'Upload the QR image from your bank or UPI app, or just enter a UPI ID and a QR will be made for you.';
+  }
+}
+
+document.getElementById('openBizBtn').addEventListener('click', ()=>{
+  openModal('bizModal'); fillBizForm();
+});
+Object.values(BIZ_FIELDS).forEach(id=>document.getElementById(id).addEventListener('input', ()=>{ bizDirty = true; refreshBizForm(); }));
+document.getElementById('bsQrUpload').addEventListener('click', ()=>document.getElementById('bsQrFile').click());
+document.getElementById('bsQrRemove').addEventListener('click', ()=>{ bizDraftQr=''; bizDirty=true; refreshBizForm(); });
+document.getElementById('bsQrFile').addEventListener('change', async e=>{
+  const file = e.target.files[0]; e.target.value = '';
+  if(!file) return;
+  if(!file.type.startsWith('image/')){ showToast('Choose an image file (PNG or JPG)', 'error'); return; }
+  try {
+    bizDraftQr = await shrinkImage(file, 600);
+    bizDirty = true; refreshBizForm();
+  } catch(err){ showToast('Could not read that image: ' + err.message, 'error'); }
+});
+
+/* Fit inside max x max and return a data URL small enough for a Firestore document. */
+function shrinkImage(file, max){
+  return new Promise((resolve, reject)=>{
+    const reader = new FileReader();
+    reader.onerror = ()=>reject(new Error('read failed'));
+    reader.onload = ()=>{
+      const img = new Image();
+      img.onerror = ()=>reject(new Error('not a valid image'));
+      img.onload = ()=>{
+        const scale = Math.min(1, max / Math.max(img.width, img.height));
+        const c = document.createElement('canvas');
+        c.width = Math.round(img.width*scale); c.height = Math.round(img.height*scale);
+        const ctx = c.getContext('2d');
+        ctx.fillStyle = '#fff'; ctx.fillRect(0,0,c.width,c.height);
+        ctx.drawImage(img, 0, 0, c.width, c.height);
+        let url = c.toDataURL('image/png');
+        if(url.length > 700000) url = c.toDataURL('image/jpeg', 0.92);
+        resolve(url);
+      };
+      img.src = reader.result;
+    };
+    reader.readAsDataURL(file);
+  });
+}
+
+document.getElementById('bsSave').addEventListener('click', async ()=>{
+  const data = { ...readBizForm(), updatedAt:new Date().toISOString() };
+  biz = data; bizDirty = false;
+  if(!db){ showToast('Saved for this session only (cloud not connected)', 'error'); return; }
+  const btn = document.getElementById('bsSave'); btn.disabled = true;
+  try { await db.collection('settings').doc('business').set(data); showToast('Quotation details saved'); }
+  catch(e){ showToast('Save failed: ' + e.message, 'error'); }
+  btn.disabled = false;
+});
+document.getElementById('bsPreviewQuote').addEventListener('click', ()=>{
+  const useSample = !days.length || !allMenuDishes().length;
+  generateQuotePDF(readBizForm(), useSample);
+});
+
+/* =========================================================================
    PDF — QUOTATION (Table format with pricing)
    ========================================================================= */
-document.getElementById('pdfQuoteBtn').addEventListener('click', generateQuotePDF);
+document.getElementById('pdfQuoteBtn').addEventListener('click', ()=>generateQuotePDF());
 
-function generateQuotePDF(){
+function generateQuotePDF(details, sample=false){
+  const B = details || biz || {};
+  const qDays = sample ? SAMPLE_QUOTE_DAYS : days;
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
   const W = doc.internal.pageSize.getWidth();
@@ -1924,7 +2157,7 @@ function generateQuotePDF(){
   const mx = 40;
 
   const inkRGB=[35,32,25], saffRGB=[157,106,28], herbRGB=[74,93,69], softRGB=[110,102,84], ruleRGB=[205,194,168];
-  const clientName = document.getElementById('clientName').value.trim()||'Client';
+  const clientName = sample ? 'Sample Client' : (document.getElementById('clientName').value.trim()||'Client');
 
   doc.setFillColor(...inkRGB);
   doc.rect(0,0,W,86,'F');
@@ -1936,6 +2169,10 @@ function generateQuotePDF(){
   doc.setFontSize(10.5);
   doc.setTextColor(210,195,160);
   doc.text('Shakti Catering & Events | '+new Date().toLocaleDateString('en-IN',{day:'2-digit',month:'long',year:'numeric'}), mx, 60);
+  if(B.gstin){
+    doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(240,235,220);
+    doc.text(`GSTIN: ${pdfSafe(B.gstin)}`, mx, 76);
+  }
   try { doc.addImage(LOGO_B64,'PNG',W-mx-70,12,60,60); } catch(e){}
 
   let y=112;
@@ -1947,12 +2184,20 @@ function generateQuotePDF(){
   doc.setFont('helvetica','bold');
   doc.text('Duration',W-mx-160,y);
   doc.setFont('helvetica','normal');
-  doc.text(`${days.length} day${days.length>1?'s':''}`,W-mx-80,y);
+  doc.text(`${qDays.length} day${qDays.length>1?'s':''}`,W-mx-80,y);
+  const venueQ = sample ? '' : pdfSafe(document.getElementById('venue').value.trim());
+  if(venueQ){
+    y+=20;
+    doc.setFont('helvetica','bold'); doc.setFontSize(13);
+    doc.text('Venue', mx, y);
+    doc.setFont('helvetica','normal'); doc.setFontSize(12);
+    doc.text(venueQ, mx+55, y, {maxWidth: W-mx*2-55});
+  }
   y+=18;
   doc.setDrawColor(...ruleRGB); doc.line(mx,y+4,W-mx,y+4); y+=26;
 
   let grandTotalPerPlate=0, grandTotalAmount=0;
-  days.forEach(day=>{
+  qDays.forEach(day=>{
     if(y>700){doc.addPage();y=50;}
     const dayLabel=`${day.label}`+(day.date?`  ·  ${fmtDate(day.date)}`:'');
     doc.setFillColor(...saffRGB);
@@ -2013,12 +2258,60 @@ function generateQuotePDF(){
     doc.text(`Rs. ${Math.round(grandTotalAmount).toLocaleString('en-IN')}`,boxL+boxW-20,y+54,{align:'right'});
   }
 
+  y += boxH - 20 + 34;
+
+  /* ----- Payment details ----- */
+  const bankRows = [
+    ['Account name', B.bankHolder], ['Bank', B.bankName], ['Account no.', B.bankAcc],
+    ['IFSC', B.bankIfsc], ['Branch', B.bankBranch], ['Account type', B.bankType]
+  ].filter(r=>r[1] && String(r[1]).trim());
+  if(B.upiId) bankRows.push(['UPI ID', B.upiId]);
+  const qrObj = B.qrImage ? null : (B.upiId ? makeQr(upiLink(B.upiId, B.upiName)) : null);
+  const hasQr = !!(B.qrImage || qrObj);
+  if(bankRows.length || hasQr){
+    const qrSize = 104;
+    const blockH = 30 + Math.max(bankRows.length*17, hasQr ? qrSize + 24 : 0);
+    if(y + blockH > H - 50){ doc.addPage(); y = 60; }
+    doc.setFont('times','bold'); doc.setFontSize(14); doc.setTextColor(...inkRGB);
+    doc.text('Payment details', mx, y);
+    doc.setDrawColor(...ruleRGB); doc.setLineWidth(.6); doc.line(mx, y+7, W-mx, y+7);
+    let by = y + 28;
+    bankRows.forEach(([label, value])=>{
+      doc.setFont('helvetica','bold'); doc.setFontSize(9.5); doc.setTextColor(...softRGB);
+      doc.text(label, mx, by);
+      doc.setFont('helvetica','normal'); doc.setFontSize(10.5); doc.setTextColor(...inkRGB);
+      doc.text(pdfSafe(value), mx+90, by, { maxWidth: W - mx*2 - 90 - (hasQr ? qrSize + 30 : 0) });
+      by += 17;
+    });
+    if(hasQr){
+      const qx = W - mx - qrSize, qy = y + 16;
+      if(B.qrImage){
+        const fmt = B.qrImage.startsWith('data:image/jpeg') ? 'JPEG' : 'PNG';
+        try {
+          const props = doc.getImageProperties(B.qrImage);
+          const r = Math.min(qrSize/props.width, qrSize/props.height);
+          const iw = props.width*r, ih = props.height*r;
+          doc.addImage(B.qrImage, fmt, qx + (qrSize-iw)/2, qy + (qrSize-ih)/2, iw, ih);
+        } catch(e){ console.error('QR image', e); }
+      } else {
+        const n = qrObj.getModuleCount(), quiet = 2, cell = qrSize/(n + quiet*2);
+        doc.setFillColor(255,255,255); doc.rect(qx, qy, qrSize, qrSize, 'F');
+        doc.setFillColor(0,0,0);
+        for(let r=0;r<n;r++) for(let c=0;c<n;c++){
+          if(qrObj.isDark(r,c)) doc.rect(qx + (c+quiet)*cell, qy + (r+quiet)*cell, cell+0.05, cell+0.05, 'F');
+        }
+      }
+      doc.setFont('helvetica','bold'); doc.setFontSize(8.5); doc.setTextColor(...softRGB);
+      doc.text('Scan to pay with any UPI app', qx + qrSize/2, qy + qrSize + 13, { align:'center' });
+    }
+  }
+
   const pc=doc.internal.getNumberOfPages();
   for(let p=1;p<=pc;p++){
     doc.setPage(p);
     doc.setFont('helvetica','normal'); doc.setFontSize(8.5); doc.setTextColor(...softRGB);
     doc.text(`Page ${p} of ${pc}`,W-mx,H-24,{align:'right'});
-    doc.text('Shakti Catering & Events | 8934020403 | 9889815000',mx,H-24);
+    doc.text('Shakti Catering & Events | 8934020403 | 9889815000' + (B.gstin ? ` | GSTIN ${pdfSafe(B.gstin)}` : ''),mx,H-24);
   }
   const safe=clientName.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'')||'quote';
   doc.save(`Quotation_${safe}.pdf`);
@@ -2031,6 +2324,7 @@ function serializeState(){
   const clientName = document.getElementById('clientName').value.trim();
   return {
     clientName,
+    venue: document.getElementById('venue').value.trim(),
     numDays: days.length,
     moodId: currentMoodId,
     savedAt: new Date().toISOString(),
@@ -2051,6 +2345,7 @@ function serializeState(){
 
 function deserializeState(data){
   document.getElementById('clientName').value = data.clientName || '';
+  document.getElementById('venue').value = data.venue || '';
   document.getElementById('numDays').value = data.numDays || 1;
   if(data.moodId && moods.find(m=>m.id===data.moodId)) currentMoodId = data.moodId;
   renderMoodSelects();
@@ -2099,41 +2394,96 @@ async function saveClient(){
   }
 }
 
+let savedClients = []; // [{ id, data }]
+
 async function loadClientList(){
   if(!db) return;
   const listEl = document.getElementById('clientList');
   try {
     const snapshot = await db.collection('clients').orderBy('savedAt','desc').get();
-    if(snapshot.empty){
-      listEl.innerHTML = '<div class="no-clients">No saved clients yet. Build a menu and click Save.</div>';
-      return;
-    }
-    listEl.innerHTML = '';
-    snapshot.forEach(doc => {
-      const d = doc.data();
-      const card = document.createElement('div');
-      card.className = 'client-card';
-      const savedDate = d.savedAt ? new Date(d.savedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '';
-      const mealCount = (d.days||[]).reduce((sum,day) => sum + (day.meals||[]).length, 0);
-      const moodName = d.moodId ? (moods.find(m=>m.id===d.moodId)?.name || '') : '';
-      card.innerHTML = `
-        <div class="client-card-info">
-          <div class="client-card-name">${esc(d.clientName||doc.id)}</div>
-          <div class="client-card-meta">${d.numDays||0} day${(d.numDays||0)>1?'s':''} · ${mealCount} meals${moodName?' · '+esc(moodName):''} · ${savedDate}</div>
-        </div>
-        <div class="client-card-actions">
-          <button class="btn btn-saffron btn-sm load-btn">Load</button>
-          <button class="btn btn-danger btn-sm del-btn">Delete</button>
-        </div>`;
-      card.querySelector('.load-btn').addEventListener('click', () => loadClient(doc.id));
-      card.querySelector('.del-btn').addEventListener('click', () => deleteClient(doc.id, d.clientName));
-      listEl.appendChild(card);
-    });
+    savedClients = [];
+    snapshot.forEach(doc => savedClients.push({ id:doc.id, data:doc.data() }));
+    renderClientList();
   } catch(e){
     console.error('Load list error:', e);
     listEl.innerHTML = '<div class="no-clients">Error loading clients. Check Firebase config.</div>';
   }
 }
+
+function clientEventDates(d){
+  return [...new Set((d.days||[]).map(x=>x.date).filter(Boolean))].sort();
+}
+
+function renderClientList(){
+  const listEl = document.getElementById('clientList');
+  const note = document.getElementById('clientSearchNote');
+  const qName = norm(document.getElementById('clientSearchName').value);
+  const qDate = document.getElementById('clientSearchDate').value; // yyyy-mm-dd
+
+  if(!savedClients.length){
+    note.hidden = true;
+    listEl.innerHTML = '<div class="no-clients">No saved clients yet. Build a menu and click Save.</div>';
+    return;
+  }
+
+  const matches = savedClients.filter(({ id, data:d })=>{
+    if(qName){
+      const n = norm(d.clientName || id);
+      if(!qName.split(' ').every(w=>n.includes(w))) return false;
+    }
+    if(qDate){
+      const saved = d.savedAt ? d.savedAt.slice(0,10) : '';
+      if(!clientEventDates(d).includes(qDate) && saved !== qDate) return false;
+    }
+    return true;
+  });
+
+  const filtering = qName || qDate;
+  note.hidden = !filtering;
+  if(filtering){
+    const parts = [];
+    if(qName) parts.push(`name "${document.getElementById('clientSearchName').value.trim()}"`);
+    if(qDate) parts.push(`event or saved date ${fmtDate(qDate)}`);
+    note.textContent = `${matches.length} of ${savedClients.length} clients match ${parts.join(' and ')}`;
+  }
+
+  if(!matches.length){
+    listEl.innerHTML = '<div class="no-clients">No saved clients match. Try another name or date, or press Clear.</div>';
+    return;
+  }
+
+  listEl.innerHTML = '';
+  matches.forEach(({ id, data:d })=>{
+    const card = document.createElement('div');
+    card.className = 'client-card';
+    const savedDate = d.savedAt ? new Date(d.savedAt).toLocaleDateString('en-IN',{day:'2-digit',month:'short',year:'numeric'}) : '';
+    const ev = clientEventDates(d);
+    const evText = ev.length ? (ev.length > 1 ? `${fmtDate(ev[0])} - ${fmtDate(ev[ev.length-1])}` : fmtDate(ev[0])) : 'No event date';
+    const moodName = d.moodId ? (moods.find(m=>m.id===d.moodId)?.name || '') : '';
+    card.title = savedDate ? `Saved on ${savedDate}` : '';
+    card.innerHTML = `
+      <div class="client-card-info">
+        <div class="client-card-name">${esc(d.clientName||id)}</div>
+        ${d.venue ? `<div class="client-card-venue">${esc(d.venue)}</div>` : ''}
+        <div class="client-card-meta">${esc(evText)} · ${d.numDays||0} day${(d.numDays||0)>1?'s':''}${moodName?' · '+esc(moodName):''}</div>
+      </div>
+      <div class="client-card-actions">
+        <button class="btn btn-saffron btn-sm load-btn">Load</button>
+        <button class="btn btn-danger btn-sm del-btn">Delete</button>
+      </div>`;
+    card.querySelector('.load-btn').addEventListener('click', () => loadClient(id));
+    card.querySelector('.del-btn').addEventListener('click', () => deleteClient(id, d.clientName));
+    listEl.appendChild(card);
+  });
+}
+document.getElementById('clientSearchName').addEventListener('input', renderClientList);
+document.getElementById('clientSearchDate').addEventListener('change', renderClientList);
+document.getElementById('clientSearchDate').addEventListener('input', renderClientList);
+document.getElementById('clientSearchClear').addEventListener('click', ()=>{
+  document.getElementById('clientSearchName').value = '';
+  document.getElementById('clientSearchDate').value = '';
+  renderClientList();
+});
 
 async function loadClient(docId){
   if(!db) return;
@@ -2168,6 +2518,7 @@ async function deleteClient(docId, name){
 updateSummary();
 if(initFirebase()){
   subscribeMoods();
+  subscribeBiz();
   subscribeLibrary();
   loadClientList();
 } else {
