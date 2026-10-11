@@ -527,6 +527,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <div class="lib-tools">
       <input type="search" id="libSearch" placeholder="Search dishes">
       <select id="libBucket" aria-label="Filter by bucket"></select>
+      <button class="btn btn-ghost btn-sm" id="libBucketRename" type="button" title="Change this bucket's name" hidden>Rename bucket</button>
       <button class="btn btn-danger btn-sm" id="libBucketDel" type="button" title="Delete this bucket. Its dishes move to No bucket." hidden>Delete bucket</button>
       <button class="btn btn-ghost btn-sm" id="libFixCapsBtn" title="Fix capital letters in all dish names">Fix capitals</button>
       <button class="btn btn-primary btn-sm" id="libNewBtn">+ New dish</button>
@@ -980,6 +981,39 @@ async function deleteBucket(bucket){
     } catch(e){ console.error(e); showToast('Bucket not fully deleted: ' + e.message, 'error'); return; }
   }
   showToast(`Bucket "${bucket}" deleted` + (dishes.length ? ` · ${dishes.length} dish${dishes.length>1?'es':''} moved to No bucket` : ''));
+}
+
+/* Rename a bucket: every dish in it moves to the new name.
+   If the new name is already a bucket, the two buckets are merged (after asking). */
+async function renameBucket(oldName, newName){
+  oldName = cleanBucket(oldName);
+  newName = cleanBucket(newName);
+  if(!oldName || !newName) return '';
+  if(RESERVED_BUCKETS.has(norm(newName))){ showToast(`"${newName}" is a built-in option. Please choose another name.`, 'error'); return ''; }
+  if(newName === oldName) return oldName;
+  const existing = allBuckets().find(b=>norm(b)===norm(newName) && norm(b)!==norm(oldName));
+  if(existing && !confirm(`A bucket called "${existing}" already exists.\n\nMove all dishes from "${oldName}" into "${existing}"?`)) return '';
+  const target = existing || newName;
+  const dishes = [...library.values()].filter(d=>norm(d.bucket)===norm(oldName));
+  dishes.forEach(d=>{ d.bucket = target; });
+  const oldSaved = savedBuckets.get(norm(oldName));
+  sessionBuckets.delete(norm(oldName));
+  savedBuckets.delete(norm(oldName));
+  savedBuckets.set(norm(target), { id:slug(target), name:target });
+  onLibraryChanged();
+  if(db){
+    try {
+      if(oldSaved && oldSaved.id !== slug(target)) await db.collection('buckets').doc(oldSaved.id).delete();
+      await db.collection('buckets').doc(slug(target)).set({ name:target, updatedAt:new Date().toISOString() }, { merge:true });
+      for(let i=0; i<dishes.length; i+=450){
+        const batch = db.batch();
+        dishes.slice(i,i+450).forEach(d=>batch.update(db.collection('dishes').doc(d.id), { bucket:target }));
+        await batch.commit();
+      }
+    } catch(e){ console.error(e); showToast('Bucket not fully renamed: ' + e.message, 'error'); return target; }
+  }
+  showToast(existing ? `"${oldName}" merged into "${target}"` : `Bucket renamed to "${target}"`);
+  return target;
 }
 
 async function deleteDish(id){
@@ -1632,14 +1666,7 @@ function closeModal(id){
   if([...document.querySelectorAll('.modal,.pv')].every(m=>m.hidden)) document.body.classList.remove('no-scroll');
 }
 document.querySelectorAll('.modal [data-close]').forEach(b=>b.addEventListener('click', ()=>closeModal(b.closest('.modal').id)));
-document.querySelectorAll('.modal').forEach(m=>m.addEventListener('mousedown', e=>{
-  if(e.target===m && m.id!=='newDishModal') closeModal(m.id);
-}));
-document.addEventListener('keydown', e=>{
-  if(e.key!=='Escape') return;
-  if(!document.getElementById('newDishModal').hidden) return closeNewDish();
-  for(const id of ['bizModal','quoteModal','moodModal','libraryModal']) if(!document.getElementById(id).hidden) return closeModal(id);
-});
+/* Modals close only with their Close button (no background click, no Escape key). */
 
 document.getElementById('openLibraryBtn').addEventListener('click', ()=>{
   libEditingId = null;
@@ -1660,6 +1687,17 @@ document.getElementById('libBucketDel').addEventListener('click', async ()=>{
   sel.value = '';
   await deleteBucket(b);
   fillBucketSelect(sel, 'filter', '');
+  renderLibraryList();
+});
+document.getElementById('libBucketRename').addEventListener('click', async ()=>{
+  const sel = document.getElementById('libBucket');
+  const b = sel.value;
+  if(!b || b === BUCKET_NONE) return;
+  const next = prompt(`New name for the bucket "${b}":`, b);
+  if(next === null) return;
+  const target = await renameBucket(b, next);
+  if(!target) return;
+  fillBucketSelect(sel, 'filter', target);
   renderLibraryList();
 });
 /* ---------- Fix capitals for every dish already in the library ----------
@@ -1757,6 +1795,7 @@ function renderLibraryList(){
   const q = document.getElementById('libSearch').value.trim();
   const bucket = document.getElementById('libBucket').value;
   document.getElementById('libBucketDel').hidden = !bucket || bucket === BUCKET_NONE;
+  document.getElementById('libBucketRename').hidden = !bucket || bucket === BUCKET_NONE;
   const listEl = document.getElementById('libList');
   const rows = q ? searchDishes(q, 9999, bucket) : [...library.values()].filter(d=>inBucket(d, bucket)).sort((a,b)=>a.name.localeCompare(b.name));
   const noted = [...library.values()].filter(d=>d.detail).length;
@@ -2186,6 +2225,8 @@ function fmtDateHi(iso){
 }
 function hiSafe(s){
   return String(s || '')
+    // drop list numbers the translator sometimes copies, e.g. "1. ", "२) ", "(3) "
+    .replace(/^[ \t]*[(\[]?[0-9\u0966-\u096F]{1,3}[ \t]*[.)\]:\u0964](?![0-9\u0966-\u096F])[ \t]*/gm, '')
     .replace(/[‘’‚′]/g,"'")
     .replace(/[“”„″]/g,'"')
     .replace(/–/g,'-')

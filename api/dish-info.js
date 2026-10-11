@@ -112,31 +112,33 @@ async function translateHindi(body, res) {
     return res.status(400).json({ error: "texts is required" });
   }
   const kind = body.kind === "dish" ? "dish" : "text";
-  const list = texts.map((t, i) => `${i + 1}. ${t.replace(/\n/g, " \\n ")}`).join("\n");
+  const list = JSON.stringify(texts.map((t) => t.replace(/\n/g, " <br> ")));
   const rules =
     kind === "dish"
       ? `These are Indian dish names on a printed catering menu. Write each one in Hindi (Devanagari script) the way Hindi-speaking guests say it.
 - If the dish has a well known Hindi name, use it, e.g. "Gulab Jamun" -> "गुलाब जामुन", "Jeera Rice" -> "जीरा राइस".
 - Otherwise write the English words in Devanagari letters instead of translating them, e.g. "Paneer Butter Masala" -> "पनीर बटर मसाला", "Veg Manchurian" -> "वेज मंचूरियन", "Cold Coffee" -> "कोल्ड कॉफ़ी".
-- Keep it short. No English letters, no explanations.`
+- Keep it short. No English letters, no explanations. Do not add serial numbers or list markers.`
       : `These are lines from a printed Indian catering menu or its headings (meal names, section names, greetings, notes, client and place names).
 - Translate each into natural, elegant, easy-to-read Hindi in Devanagari script, keeping the same meaning and tone.
 - Names of people, places, hotels and brands are written in Devanagari letters (not translated), e.g. "Sri Sanjay Chaparia Ji" -> "श्री संजय चपरिया जी", "Hotel Radisson, Gorakhpur" -> "होटल रेडिसन, गोरखपुर".
 - Dish names inside a sentence are written in Devanagari letters as Hindi speakers say them.
-- Keep numbers, phone numbers and times as digits (0-9). Keep "||" and similar symbols. " \\n " marks a line break: keep it in the same place.
+- Keep numbers, phone numbers and times as digits (0-9). Keep "||" and similar symbols. "<br>" marks a line break: keep it in the same place.
+- Do not add serial numbers, bullets or list markers.
 - No English letters unless it is a code or number. No explanations.`;
   const prompt = `${rules}
 
 Return JSON only, one entry per line in the same order: {"texts":["...","..."]}
 
-Lines:
+Lines (a JSON array, in order):
 ${list}`;
   const out = await callOpenAI(prompt, 200 + texts.reduce((a, t) => a + t.length * 4, 0));
   const got = Array.isArray(out.texts) ? out.texts : [];
   return res.status(200).json({
     texts: texts.map((_, i) =>
       String(got[i] || "")
-        .replace(/\s*\\n\s*/g, "\n")
+        .replace(/\s*<br>\s*/gi, "\n")
+        .replace(/^\s*[(\[]?[0-9\u0966-\u096F]{1,3}\s*[.)\]:\u0964](?![0-9\u0966-\u096F])\s*/gm, "")
         .trim()
     ),
   });
