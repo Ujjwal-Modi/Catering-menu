@@ -103,6 +103,45 @@ Return JSON only: {"title":"...","text":"..."}`;
   });
 }
 
+// Translates menu text into Hindi (Devanagari) for the Hindi menu PDF.
+// Body: { type:"translate", kind:"dish"|"text", texts:[...] } -> { texts:[...] } (same order, "" when unsure)
+async function translateHindi(body, res) {
+  const clean = (v) => String(v || "").replace(/[ \t]+/g, " ").trim().slice(0, 900);
+  const texts = (Array.isArray(body.texts) ? body.texts : []).map(clean).slice(0, 40);
+  if (!texts.length || texts.some((t) => !t)) {
+    return res.status(400).json({ error: "texts is required" });
+  }
+  const kind = body.kind === "dish" ? "dish" : "text";
+  const list = texts.map((t, i) => `${i + 1}. ${t.replace(/\n/g, " \\n ")}`).join("\n");
+  const rules =
+    kind === "dish"
+      ? `These are Indian dish names on a printed catering menu. Write each one in Hindi (Devanagari script) the way Hindi-speaking guests say it.
+- If the dish has a well known Hindi name, use it, e.g. "Gulab Jamun" -> "गुलाब जामुन", "Jeera Rice" -> "जीरा राइस".
+- Otherwise write the English words in Devanagari letters instead of translating them, e.g. "Paneer Butter Masala" -> "पनीर बटर मसाला", "Veg Manchurian" -> "वेज मंचूरियन", "Cold Coffee" -> "कोल्ड कॉफ़ी".
+- Keep it short. No English letters, no explanations.`
+      : `These are lines from a printed Indian catering menu or its headings (meal names, section names, greetings, notes, client and place names).
+- Translate each into natural, elegant, easy-to-read Hindi in Devanagari script, keeping the same meaning and tone.
+- Names of people, places, hotels and brands are written in Devanagari letters (not translated), e.g. "Sri Sanjay Chaparia Ji" -> "श्री संजय चपरिया जी", "Hotel Radisson, Gorakhpur" -> "होटल रेडिसन, गोरखपुर".
+- Dish names inside a sentence are written in Devanagari letters as Hindi speakers say them.
+- Keep numbers, phone numbers and times as digits (0-9). Keep "||" and similar symbols. " \\n " marks a line break: keep it in the same place.
+- No English letters unless it is a code or number. No explanations.`;
+  const prompt = `${rules}
+
+Return JSON only, one entry per line in the same order: {"texts":["...","..."]}
+
+Lines:
+${list}`;
+  const out = await callOpenAI(prompt, 200 + texts.reduce((a, t) => a + t.length * 4, 0));
+  const got = Array.isArray(out.texts) ? out.texts : [];
+  return res.status(200).json({
+    texts: texts.map((_, i) =>
+      String(got[i] || "")
+        .replace(/\s*\\n\s*/g, "\n")
+        .trim()
+    ),
+  });
+}
+
 export default async function handler(req, res) {
   if (req.method !== "POST") {
     return res.status(405).json({ error: "Method not allowed" });
@@ -121,6 +160,10 @@ export default async function handler(req, res) {
 
     if (body.type === "thankyou") {
       return await writeThankYou(body, res);
+    }
+
+    if (body.type === "translate") {
+      return await translateHindi(body, res);
     }
 
     // New format: dishes:[{name, detail}]. Old format dishNames:[string] still works.

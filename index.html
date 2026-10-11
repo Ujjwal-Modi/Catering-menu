@@ -5,7 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>Shakti Catering — Menu Planner</title>
 <link rel="preconnect" href="https://fonts.googleapis.com">
-<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,400;9..144,500;9..144,600;9..144,700&family=Work+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500;600&family=Noto+Serif+Devanagari:wght@400;600;700&family=Noto+Sans+Devanagari:wght@400;600;700&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf-autotable/3.8.2/jspdf.plugin.autotable.min.js"></script>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Sortable/1.15.0/Sortable.min.js"></script>
@@ -355,6 +355,42 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
   .pv-bar .btn{flex:1;justify-content:center;}
 }
 @media(prefers-reduced-motion:reduce){*{transition:none !important;}}
+/* ---- Notes field, PDF shortcut buttons ---- */
+.setup-grid .span4{grid-column:1/-1;}
+.setup-grid textarea#menuNotes{min-height:70px;}
+.setup-grid .hint{font-size:12px;color:var(--ink-soft);margin-top:4px;}
+.sc-pdf,.m-pdf{font-size:11px;padding:5px 9px;}
+.subcat-add-row{display:flex;gap:8px;flex-wrap:wrap;}
+
+/* ---- Quotation editor ---- */
+.qm-table-wrap{overflow-x:auto;border:1px solid var(--rule);border-radius:10px;background:#fff;}
+.qm-table{width:100%;border-collapse:collapse;font-size:13.5px;min-width:560px;}
+.qm-table th{background:var(--ink);color:var(--paper-raised);font-size:11px;letter-spacing:.06em;text-transform:uppercase;text-align:left;padding:8px;font-weight:600;}
+.qm-table td{border-top:1px solid #eee6d3;padding:6px;vertical-align:top;}
+.qm-table input,.qm-table textarea{padding:6px 8px;font-size:13.5px;}
+.qm-table textarea{min-height:64px;}
+.qm-table .c-sno{width:64px;}
+.qm-table .c-num{width:96px;}
+.qm-table .c-amt{width:110px;text-align:right;}
+.qm-table td.c-amt{font-family:'JetBrains Mono',monospace;font-size:12.5px;padding-top:12px;color:var(--ink-soft);}
+.qm-table .c-x{width:40px;}
+.qm-table .qm-del{padding:5px 9px;}
+.qm-empty{padding:16px;text-align:center;color:var(--ink-soft);font-style:italic;}
+.qm-under{display:flex;justify-content:space-between;align-items:center;gap:10px;flex-wrap:wrap;margin:10px 0 16px;}
+.qm-total{font-family:'JetBrains Mono',monospace;font-weight:600;font-size:14px;}
+.qm-terms-head{display:flex;justify-content:space-between;align-items:baseline;gap:10px;}
+.qm-terms-head h3{font-family:'Fraunces',serif;font-weight:600;font-size:16px;margin-bottom:10px;}
+.qm-terms{display:flex;flex-direction:column;gap:6px;margin-bottom:10px;max-height:300px;overflow:auto;}
+.qm-term{display:flex;align-items:flex-start;gap:10px;background:#fff;border:1px solid #e3dac4;border-radius:8px;padding:8px 10px;}
+.qm-term input[type=checkbox]{margin-top:3px;width:16px;height:16px;flex-shrink:0;accent-color:var(--saffron-deep);}
+.qm-term .tx{flex:1;font-size:13.5px;line-height:1.4;cursor:pointer;}
+.qm-term.extra{border-style:dashed;}
+.qm-term .tx small{display:block;color:var(--ink-soft);font-size:11px;}
+.qm-term .qm-term-del{padding:3px 8px;font-size:11px;}
+.qm-term-add{display:flex;gap:8px;align-items:flex-start;}
+.qm-term-add textarea{min-height:44px;}
+.modal-actions select.qm-profile{width:auto;max-width:220px;}
+@media(max-width:600px){ .pv-bar select#pvMood,.pv-bar select#pvLang{flex:1 1 40%;} .qm-term-add{flex-direction:column;} .qm-term-add .btn{width:100%;justify-content:center;} .modal-actions select.qm-profile{max-width:none;flex:1;} }
 </style>
 </head>
 <body>
@@ -410,6 +446,11 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
       </div>
       <div class="build-cell">
         <button class="btn btn-primary" id="buildBtn" style="width:100%;justify-content:center;">Build days</button>
+      </div>
+      <div class="span4">
+        <label for="menuNotes">Notes at the end of the menu PDF</label>
+        <textarea id="menuNotes" rows="3" placeholder="One point per line, e.g.&#10;All food is prepared in pure desi ghee.&#10;Live counters close 30 minutes before the event ends."></textarea>
+        <div class="hint" id="menuNotesHint">Each line prints as a separate point after the last meal. Leave empty to skip.</div>
       </div>
     </div>
   </div>
@@ -584,11 +625,62 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
   </div>
 </div>
 
+<!-- Quotation editor -->
+<div class="modal" id="quoteModal" hidden>
+  <div class="modal-panel wide" role="dialog" aria-modal="true" aria-labelledby="qmTitle">
+    <div class="modal-head">
+      <h2 id="qmTitle">Quotation</h2>
+      <button class="btn btn-ghost btn-sm" data-close>Close</button>
+    </div>
+    <p class="modal-sub">Every cell can be changed. Rows start from the meals in the menu; your changes are kept when you save the client. Dish names are not printed on the quotation.</p>
+    <div class="qm-table-wrap">
+      <table class="qm-table">
+        <thead><tr><th class="c-sno">S.No.</th><th>Description</th><th class="c-num">Pax</th><th class="c-num">Rate (₹)</th><th class="c-amt">Amount</th><th class="c-x"></th></tr></thead>
+        <tbody id="qmRows"></tbody>
+      </table>
+    </div>
+    <div class="qm-under">
+      <div style="display:flex;gap:8px;flex-wrap:wrap;">
+        <button class="btn btn-ghost btn-sm" id="qmAddRow" type="button">+ Add row</button>
+        <button class="btn btn-ghost btn-sm" id="qmReset" type="button" title="Throw away your edits and rebuild the rows from the meals">Rebuild from menu</button>
+      </div>
+      <div class="qm-total" id="qmTotal"></div>
+    </div>
+
+    <div class="bs-section">
+      <div class="qm-terms-head">
+        <h3>Terms &amp; conditions</h3>
+        <div style="display:flex;gap:6px;">
+          <button class="link-btn" id="qmTermsAll" type="button">Select all</button>
+          <button class="link-btn" id="qmTermsNone" type="button">Clear</button>
+        </div>
+      </div>
+      <div class="hint" style="margin:-4px 0 10px;font-size:12px;color:var(--ink-soft);">Tick the terms to print on this quotation. New terms are saved so you can pick them again next time.</div>
+      <div class="qm-terms" id="qmTerms"></div>
+      <div class="qm-term-add">
+        <textarea id="qmTermNew" rows="2" placeholder="Type a new term, e.g. 50% advance is required to confirm the booking."></textarea>
+        <button class="btn btn-primary btn-sm" id="qmTermAdd" type="button">Save &amp; add</button>
+      </div>
+    </div>
+
+    <div class="modal-actions" style="margin-top:16px;align-items:center;">
+      <label for="qmProfile" style="margin:0 4px 0 0;">Payment details</label>
+      <select id="qmProfile" class="qm-profile"></select>
+      <button class="btn btn-saffron" id="qmDownload" type="button">Download quotation PDF</button>
+    </div>
+  </div>
+</div>
+
 <!-- Preview -->
 <div class="pv" id="previewModal" data-tab="pages" hidden>
   <div class="pv-bar">
     <h2>Menu preview</h2>
+    <select id="pvScope" aria-label="What to print" title="Print the full menu, one meal, or one sub-category"></select>
     <select id="pvMood" aria-label="Menu mood"></select>
+    <select id="pvLang" aria-label="Menu language" title="Menu language">
+      <option value="en">English</option>
+      <option value="hi">हिन्दी (Hindi)</option>
+    </select>
     <button class="btn btn-ghost btn-sm" id="pvRewrite" title="Ask the AI for fresh dish lines in this mood">Rewrite lines</button>
     <button class="btn btn-saffron btn-sm" id="pvDownload">Download PDF</button>
     <button class="btn btn-ghost btn-sm" id="pvClose">Close</button>
@@ -714,9 +806,43 @@ const sessionBuckets = new Map();
 // "All buckets" and "No bucket" are built-in: always shown, can't be created or deleted.
 const RESERVED_BUCKETS = new Set(['all', 'all bucket', 'all buckets', 'no bucket', 'none', 'no buckets']);
 function cleanBucket(b){ return String(b || '').replace(/\s+/g,' ').trim().slice(0,40); }
+/* Buckets saved on their own (Firestore "buckets"), so a bucket made from a sub-category name
+   is kept even before any dish is in it. doc id = slug(name), { name, createdAt } */
+const savedBuckets = new Map();   // norm(name) -> { id, name }
+function subscribeBuckets(){
+  if(!db) return;
+  db.collection('buckets').onSnapshot(snap=>{
+    savedBuckets.clear();
+    snap.forEach(d=>{ const n = cleanBucket(d.data().name); if(n) savedBuckets.set(norm(n), { id:d.id, name:n }); });
+    onLibraryChanged();
+  }, err=>{
+    console.error('Buckets error:', err);
+    showToast('Could not load saved buckets. Check that Firestore rules allow the "buckets" collection.', 'error');
+  });
+}
+/* Saves a bucket name (if new). Returns the name as stored, or '' if it can't be a bucket. */
+function saveBucket(name){
+  name = cleanBucket(name);
+  if(!name || RESERVED_BUCKETS.has(norm(name))) return '';
+  const existing = allBuckets().find(x=>norm(x)===norm(name));
+  if(existing){
+    if(!savedBuckets.has(norm(existing)) && db) db.collection('buckets').doc(slug(existing)).set({ name:existing, createdAt:new Date().toISOString() }).catch(e=>console.warn('bucket save', e));
+    return existing;
+  }
+  sessionBuckets.set(norm(name), name);
+  savedBuckets.set(norm(name), { id:slug(name), name });
+  onLibraryChanged();
+  if(db){
+    db.collection('buckets').doc(slug(name)).set({ name, createdAt:new Date().toISOString() })
+      .then(()=>showToast(`Saved "${name}" as a bucket`))
+      .catch(e=>{ console.error(e); showToast('Bucket not saved to cloud: ' + e.message, 'error'); });
+  }
+  return name;
+}
 function allBuckets(){
   const m = new Map();
   library.forEach(d=>{ const b = cleanBucket(d.bucket); if(b && !m.has(norm(b))) m.set(norm(b), b); });
+  savedBuckets.forEach((b,k)=>{ if(!m.has(k)) m.set(k, b.name); });
   sessionBuckets.forEach((b,k)=>{ if(!m.has(k)) m.set(k, b); });
   return [...m.values()].sort((a,b)=>a.localeCompare(b));
 }
@@ -763,6 +889,7 @@ function readBucketPick(sel, newInput){
   const existing = allBuckets().find(x=>norm(x)===norm(nice));
   const name = existing || nice;
   sessionBuckets.set(norm(name), name);
+  saveBucket(name);
   return name;
 }
 function wireBucketPick(sel, newInput){
@@ -839,7 +966,10 @@ async function deleteBucket(bucket){
   const dishes = [...library.values()].filter(d=>norm(d.bucket)===norm(bucket));
   dishes.forEach(d=>{ d.bucket = ''; });
   sessionBuckets.delete(norm(bucket));
+  const saved = savedBuckets.get(norm(bucket));
+  savedBuckets.delete(norm(bucket));
   onLibraryChanged();
+  if(db && saved) db.collection('buckets').doc(saved.id).delete().catch(e=>console.warn('bucket delete', e));
   if(db && dishes.length){
     try {
       for(let i=0; i<dishes.length; i+=450){
@@ -1163,7 +1293,11 @@ function buildMealEl(day, mIdx, meal){
 
   const panel = document.createElement('div'); panel.className='dish-panel';
   panel.innerHTML = `<div class="subcats"></div>
-    <div class="subcat-add-row"><button class="btn btn-ghost btn-sm sc-add">+ Add sub-category</button></div>`;
+    <div class="subcat-add-row"><button class="btn btn-ghost btn-sm sc-add">+ Add sub-category</button><button class="btn btn-ghost btn-sm m-pdf" title="Preview and download a PDF of this meal only">PDF of this meal</button></div>`;
+  panel.querySelector('.m-pdf').addEventListener('click',()=>{
+    if(!totalDishCount(meal)){ showToast('Add some dishes to this meal first', 'error'); return; }
+    openPreview(`m:${meal.id}`);
+  });
   panel.querySelector('.sc-add').addEventListener('click',()=>{
     meal.subcats.push(makeSubcat(''));
     renderSubcats(el, meal);
@@ -1208,10 +1342,24 @@ function buildSubcatEl(mealEl, meal, sc){
       <span class="grip sc-grip" title="Drag to reorder">${GRIP_SVG}</span>
       <input type="text" class="subcat-name" placeholder="Sub-category name, e.g. Drinks (optional)" value="${esc(sc.name)}">
       <span class="meal-count sc-count"></span>
+      <button class="btn btn-ghost btn-sm sc-pdf" title="Preview and download a PDF of this sub-category only">PDF</button>
       <button class="btn btn-danger btn-sm sc-del" title="Remove this sub-category">✕</button>
     </div>
     <div class="sel-list" data-empty="No dishes yet. Search below to add some."></div>`;
-  el.querySelector('.subcat-name').addEventListener('input', e=>{ sc.name = e.target.value; });
+  const nameIn = el.querySelector('.subcat-name');
+  nameIn.addEventListener('input', e=>{ sc.name = e.target.value; });
+  // A new sub-category name is saved as a bucket, so it can be picked next time.
+  nameIn.addEventListener('change', ()=>{ if(cleanBucket(sc.name)) saveBucket(sc.name); });
+  el.querySelector('.sc-pdf').addEventListener('click', ()=>{
+    if(!sc.dishes.length){ showToast('Add some dishes to this sub-category first', 'error'); return; }
+    openPreview(`s:${meal.id}:${sc.id}`);
+  });
+  // Dishes with no bucket that are added here join the bucket named after this sub-category.
+  const fileUnderSubcat = names=>{
+    const b = cleanBucket(sc.name) ? saveBucket(sc.name) : '';
+    if(!b) return;
+    names.forEach(n=>{ const d = dishByName(n); if(d && !cleanBucket(d.bucket)) updateDishBucket(d.id, b, true); });
+  };
   el.querySelector('.sc-del').addEventListener('click', ()=>{
     if(sc.dishes.length && !confirm(`Remove "${sc.name || 'this sub-category'}" and its ${sc.dishes.length} dishes?`)) return;
     meal.subcats.splice(meal.subcats.indexOf(sc), 1);
@@ -1263,6 +1411,7 @@ function buildSubcatEl(mealEl, meal, sc){
       if(exists){ showToast(`"${name}" is already in ${exists.name || 'this meal'}`, 'error'); return; }
       sc.dishes.push(name);
       bumpUsage(name);
+      fileUnderSubcat([name]);
       renderChips();
     },
     ()=> new Set(mealDishes(meal).map(norm)),
@@ -1274,10 +1423,20 @@ function buildSubcatEl(mealEl, meal, sc){
       // An unnamed sub-category takes the bucket's name, e.g. "Drinks"
       if(bucket && bucket !== BUCKET_NONE && !sc.name.trim()){
         sc.name = bucket;
-        el.querySelector('.subcat-name').value = bucket;
+        nameIn.value = bucket;
       }
+      fileUnderSubcat(add);
       renderChips();
       showToast(`Added ${add.length} dish${add.length>1?'es':''}`);
+    },
+    {
+      // Picking a bucket names the sub-category after it (while it is unnamed or still empty)
+      onBucket: bucket=>{
+        if(!bucket || bucket === BUCKET_NONE) return;
+        if(sc.name.trim() && sc.dishes.length) return;
+        sc.name = bucket; nameIn.value = bucket;
+      },
+      defaultBucket: ()=> cleanBucket(sc.name)
     }
   ));
   return el;
@@ -1286,7 +1445,7 @@ function buildSubcatEl(mealEl, meal, sc){
 /* =========================================================================
    DISH SEARCH WIDGET
    ========================================================================= */
-function buildDishSearch(onPick, getExclude, onPickMany){
+function buildDishSearch(onPick, getExclude, onPickMany, opts={}){
   const wrap = document.createElement('div'); wrap.className = 'dish-search';
   wrap.innerHTML = `<div class="ds-bar"><select class="ds-bucket" aria-label="Filter by bucket" title="Filter by bucket"></select><input type="search" placeholder="Search dishes, or type a new one" autocomplete="off" enterkeyhint="done"></div><div class="ds-results" hidden></div>`;
   const inp = wrap.querySelector('input');
@@ -1329,7 +1488,7 @@ function buildDishSearch(onPick, getExclude, onPickMany){
     if(!it) return;
     if(it.type==='dish'){ onPick(it.dish.name); }
     else {
-      const b = sel.value && sel.value !== BUCKET_NONE ? sel.value : '';
+      const b = sel.value && sel.value !== BUCKET_NONE ? sel.value : (opts.defaultBucket ? opts.defaultBucket() : '');
       inp.value = ''; active = 0; open = false; render();
       openNewDishDialog(it.name, d=>onPick(d.name), b);
       return;
@@ -1338,7 +1497,7 @@ function buildDishSearch(onPick, getExclude, onPickMany){
   }
   inp.addEventListener('input', ()=>{ open = true; active = 0; render(); });
   inp.addEventListener('focus', ()=>{ open = true; render(); });
-  sel.addEventListener('change', ()=>{ open = true; active = 0; render(); });
+  sel.addEventListener('change', ()=>{ open = true; active = 0; if(opts.onBucket) opts.onBucket(sel.value); render(); });
   // Re-picking the same option (e.g. "All buckets") fires no change event, so open the list on focus/click too.
   sel.addEventListener('focus', ()=>{ open = true; render(); });
   sel.addEventListener('click', ()=>{ if(!open){ open = true; render(); } });
@@ -1479,7 +1638,7 @@ document.querySelectorAll('.modal').forEach(m=>m.addEventListener('mousedown', e
 document.addEventListener('keydown', e=>{
   if(e.key!=='Escape') return;
   if(!document.getElementById('newDishModal').hidden) return closeNewDish();
-  for(const id of ['bizModal','moodModal','libraryModal']) if(!document.getElementById(id).hidden) return closeModal(id);
+  for(const id of ['bizModal','quoteModal','moodModal','libraryModal']) if(!document.getElementById(id).hidden) return closeModal(id);
 });
 
 document.getElementById('openLibraryBtn').addEventListener('click', ()=>{
@@ -1808,7 +1967,7 @@ async function fetchDishInfo(names, mood, { force=false } = {}){
     const d = dishByName(name);
     const saved = d && d.ai && d.ai[mood.id];
     if(!force && saved && saved.desc && saved.tone === mood.tone && d.nutrition){
-      aiCache[k] = { desc:saved.desc, nutrition:d.nutrition };
+      aiCache[k] = { desc:saved.desc, nutrition:d.nutrition, descHi:saved.descHi || '' };
       return;
     }
     need.push({ name, detail: d?.detail || '' });
@@ -2005,9 +2164,203 @@ function drawLogo(doc, x, y, boxW, boxH, ax='center', ay='middle'){
   } catch(e){ console.error('Logo failed', e); return null; }
 }
 
-function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
+/* =========================================================================
+   HINDI MENU
+   jsPDF's built-in fonts have no Hindi letters, and jsPDF can't join Hindi letters
+   (matras, half letters). So every Hindi line is drawn by the browser on a canvas in
+   Noto Devanagari and placed in the PDF as a sharp transparent image. Latin-only
+   lines (phone numbers etc.) are still printed as normal PDF text.
+   Translations come from /api/dish-info (type "translate") and are cached:
+   dish names on the dish doc (hiName), dish lines on dish.ai[mood].descHi,
+   everything else in this browser (localStorage "hiCache").
+   ========================================================================= */
+const DEVA_RE = /[ऀ-ॿ]/;
+const HI_TEXT_K = 4;   // canvas pixels per PDF point (about 290 dpi)
+const HI_ADDRESS = 'पिलर नंबर 9 के सामने, हरियाणा ट्रांसपोर्ट के पास, ट्रांसपोर्ट नगर, गोरखपुर - 273016';
+const HI_WORDS = { contd:'(जारी)', pax:'व्यक्ति', notes:'कृपया ध्यान दें', preparedFor:'विशेष रूप से तैयार मेन्यू' };
+const HI_MONTHS = ['जनवरी','फ़रवरी','मार्च','अप्रैल','मई','जून','जुलाई','अगस्त','सितंबर','अक्टूबर','नवंबर','दिसंबर'];
+function fmtDateHi(iso){
+  if(!iso) return '';
+  const [y,m,d] = iso.split('-').map(Number);
+  return `${d} ${HI_MONTHS[m-1]} ${y}`;
+}
+function hiSafe(s){
+  return String(s || '')
+    .replace(/[‘’‚′]/g,"'")
+    .replace(/[“”„″]/g,'"')
+    .replace(/–/g,'-')
+    .replace(/…/g,'...')
+    .replace(/[^\n\x20-\x7E -ÿऀ-ॿ‌‍—₹]/g,'')
+    .trim();
+}
+
+const hiCache = new Map();   // 'd|dish name' / 't|text' -> Hindi
+try { Object.entries(JSON.parse(localStorage.getItem('hiCache') || '{}')).forEach(([k,v])=>hiCache.set(k,v)); } catch(e){}
+const saveHiCache = debounce(()=>{
+  try { localStorage.setItem('hiCache', JSON.stringify(Object.fromEntries([...hiCache.entries()].slice(-2000)))); } catch(e){}
+}, 600);
+function hiKey(kind, text){ return (kind==='dish' ? 'd|' : 't|') + norm(text); }
+function isHindiAlready(t){ return DEVA_RE.test(t) && !/[A-Za-z]/.test(t); }
+function hiGet(kind, text){
+  text = String(text || '').trim();
+  if(!text) return '';
+  if(isHindiAlready(text) || !/[A-Za-z]/.test(text)) return text;   // already Hindi, or only digits/symbols
+  if(kind==='dish'){ const d = dishByName(text); if(d && d.hiName) return d.hiName; }
+  return hiCache.get(hiKey(kind, text)) || '';
+}
+async function callTranslate(kind, texts){
+  const resp = await fetch('/api/dish-info', {
+    method:'POST', headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({ type:'translate', kind, texts })
+  });
+  const data = await resp.json().catch(()=>({}));
+  if(!resp.ok || !Array.isArray(data.texts)) throw new Error(data.error || 'Translation failed');
+  return data.texts;
+}
+/* Makes sure every text has a Hindi version. Returns how many could not be translated. */
+async function ensureHindi(kind, texts){
+  const need = [...new Map(texts.map(t=>String(t||'').trim()).filter(t=>t && !hiGet(kind, t)).map(t=>[norm(t), t])).values()];
+  if(!need.length) return 0;
+  let failed = 0;
+  const batches = [];
+  for(let i=0; i<need.length; i+=30) batches.push(need.slice(i, i+30));
+  await Promise.all(batches.map(async batch=>{
+    try {
+      const out = await callTranslate(kind, batch);
+      batch.forEach((t, i)=>{
+        const hi = hiSafe(out[i]);
+        if(!hi || !DEVA_RE.test(hi)){ failed++; return; }
+        hiCache.set(hiKey(kind, t), hi);
+        if(kind==='dish'){
+          const d = dishByName(t);
+          if(d){ d.hiName = hi; if(db) db.collection('dishes').doc(d.id).update({ hiName:hi }).catch(e=>console.warn('hiName save', e)); }
+        }
+      });
+    } catch(e){ console.error('Hindi translation failed', e); failed += batch.length; }
+  }));
+  saveHiCache();
+  return failed;
+}
+/* Hindi versions of the AI dish lines for one mood. */
+async function ensureHindiDescs(mood, names){
+  const items = [...new Set(names)].map(n=>({ n, info: aiCache[aiKey(mood, n)] })).filter(x=>x.info && x.info.desc && !x.info.descHi);
+  if(!items.length) return 0;
+  let failed = 0;
+  for(let i=0; i<items.length; i+=25){
+    const batch = items.slice(i, i+25);
+    try {
+      const out = await callTranslate('text', batch.map(x=>x.info.desc));
+      batch.forEach((x, k)=>{
+        const hi = hiSafe(out[k]);
+        if(!hi || !DEVA_RE.test(hi)){ failed++; return; }
+        x.info.descHi = hi;
+        const d = dishByName(x.n);
+        if(d && d.ai && d.ai[mood.id]){
+          d.ai[mood.id].descHi = hi;
+          if(db){ const upd = {}; upd['ai.' + mood.id + '.descHi'] = hi; db.collection('dishes').doc(d.id).update(upd).catch(e=>console.warn('descHi save', e)); }
+        }
+      });
+    } catch(e){ console.error('Hindi dish lines failed', e); failed += batch.length; }
+  }
+  return failed;
+}
+
+let hiFontsReady = null;
+function ensureHindiFonts(){
+  if(!hiFontsReady){
+    const sample = 'कखग ि ी 0123 AB';
+    hiFontsReady = Promise.all([
+      "400 20px 'Noto Serif Devanagari'", "700 20px 'Noto Serif Devanagari'",
+      "400 20px 'Noto Sans Devanagari'", "700 20px 'Noto Sans Devanagari'"
+    ].map(f=>document.fonts.load(f, sample))).catch(e=>console.warn('Hindi fonts', e));
+  }
+  return hiFontsReady;
+}
+function hiFontCss(doc, K){
+  const f = doc.getFont();
+  const fam = f.fontName === 'helvetica' ? "'Noto Sans Devanagari', 'Nirmala UI', sans-serif" : "'Noto Serif Devanagari', 'Nirmala UI', serif";
+  const weight = String(f.fontStyle || '').includes('bold') ? 700 : 400;   // no italics in Hindi
+  return `${weight} ${doc.getFontSize()*K}px ${fam}`;
+}
+const hiImgCache = new Map();
+let hiImgSeq = 0;
+function drawHindiLine(doc, ln, x, y, align, color){
+  const K = HI_TEXT_K, css = hiFontCss(doc, K), size = doc.getFontSize();
+  const key = css + '|' + color.join(',') + '|' + ln;
+  let img = hiImgCache.get(key);
+  if(!img){
+    const c = makeCanvas(1,1); let ctx = c.getContext('2d'); ctx.font = css;
+    const m = ctx.measureText(ln);
+    const asc = Math.ceil(Math.max(m.actualBoundingBoxAscent || 0, size*K*1.05)) + 2;
+    const dsc = Math.ceil(Math.max(m.actualBoundingBoxDescent || 0, size*K*0.4)) + 2;
+    const left = Math.ceil(Math.max(m.actualBoundingBoxLeft || 0, 0)) + 2;
+    const w = Math.ceil(Math.max(m.width, m.actualBoundingBoxRight || 0)) + left + 3;
+    c.width = Math.max(1, w); c.height = asc + dsc;
+    ctx = c.getContext('2d');
+    ctx.font = css; ctx.fillStyle = `rgb(${color.join(',')})`; ctx.textBaseline = 'alphabetic';
+    ctx.fillText(ln, left, asc);
+    img = { url:c.toDataURL('image/png'), w:c.width/K, h:c.height/K, asc:asc/K, left:left/K, adv:m.width/K, alias:'hiTxt' + (++hiImgSeq) };
+    if(hiImgCache.size > 3000) hiImgCache.clear();
+    hiImgCache.set(key, img);
+  }
+  const sx = align==='center' ? x - img.adv/2 : align==='right' ? x - img.adv : x;
+  doc.addImage(img.url, 'PNG', sx - img.left, y - img.asc, img.w, img.h, img.alias, 'FAST');
+}
+/* Teaches one jsPDF document to measure, wrap and print Hindi text. */
+function patchDocForHindi(doc){
+  const oText = doc.text.bind(doc), oWidth = doc.getTextWidth.bind(doc), oSplit = doc.splitTextToSize.bind(doc), oColor = doc.setTextColor.bind(doc);
+  let color = [0,0,0];
+  doc.setTextColor = (...a)=>{
+    if(a.length >= 3) color = a.slice(0,3).map(Number);
+    else if(typeof a[0]==='string' && a[0][0]==='#') color = hexToRgb(a[0]);
+    else if(typeof a[0]==='number') color = [a[0],a[0],a[0]];
+    return oColor(...a);
+  };
+  const mctx = makeCanvas(2,2).getContext('2d');
+  const measure = t=>{ mctx.font = hiFontCss(doc, HI_TEXT_K); return mctx.measureText(t).width / HI_TEXT_K; };
+  doc.getTextWidth = t=>{ t = String(t ?? ''); return DEVA_RE.test(t) ? measure(t) : oWidth(t); };
+  doc.splitTextToSize = (text, maxW, o)=>{
+    text = String(text ?? '');
+    if(!DEVA_RE.test(text)) return oSplit(text, maxW, o);
+    const out = [];
+    text.split('\n').forEach(par=>{
+      const words = par.split(/\s+/).filter(Boolean);
+      if(!words.length){ out.push(''); return; }
+      let line = '';
+      words.forEach(w=>{
+        const tryLine = line ? line + ' ' + w : w;
+        if(!line || measure(tryLine) <= maxW) line = tryLine;
+        else { out.push(line); line = w; }
+      });
+      if(line) out.push(line);
+    });
+    return out;
+  };
+  doc.text = (text, x, y, opts, ...rest)=>{
+    opts = opts || {};
+    let lines = Array.isArray(text) ? text.map(String) : String(text ?? '').split('\n');
+    if(!lines.some(l=>DEVA_RE.test(l))) return oText(text, x, y, opts, ...rest);
+    if(opts.maxWidth) lines = lines.flatMap(l=>doc.splitTextToSize(l, opts.maxWidth));
+    const lh = doc.getFontSize() * (opts.lineHeightFactor || doc.getLineHeightFactor());
+    const align = opts.align || 'left';
+    lines.forEach((ln, i)=>{
+      const ly = y + i*lh;
+      if(!DEVA_RE.test(ln)){ if(ln.trim()) oText(ln, x, ly, { align }); return; }
+      drawHindiLine(doc, ln, x, ly, align, color);
+    });
+    return doc;
+  };
+  return doc;
+}
+
+function buildMenuDoc({ clientName, venue, days, mood, getInfo, lang='en', tr=null, scope=null, notes=[] }){
   const { jsPDF } = window.jspdf;
   const doc = new jsPDF({ unit:'pt', format:'a4' });
+  const HI = lang === 'hi';
+  if(HI) patchDocForHindi(doc);
+  // T(): text as printed — Hindi when the menu is in Hindi (falls back to English if not translated yet)
+  const T = (s, kind='text')=> HI ? hiSafe((tr && tr(String(s ?? ''), kind)) || s) : pdfSafe(s);
+  const fmtD = iso => HI ? fmtDateHi(iso) : fmtDate(iso);
   const W = doc.internal.pageSize.getWidth();
   const H = doc.internal.pageSize.getHeight();
   const style = MOOD_STYLES[mood.style] ? mood.style : 'festive';
@@ -2021,7 +2374,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   const F = style==='modern' ? 'helvetica' : 'times';
   const mx = style==='serene' ? 70 : 50;
   const showDesc = mood.showDescriptions !== false;
-  const showNut = mood.showNutrition !== false;
+  const showNut = !HI && mood.showNutrition !== false;   // the Hindi menu never shows nutrition
   const limitY = style==='serene' ? H - 75 : H - 60;   // inner pages have no footer
 
   const font = (f, s, size, color)=>{ doc.setFont(f, s); doc.setFontSize(size); if(color) doc.setTextColor(...color); };
@@ -2069,7 +2422,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     }
   }
   const PHONES = ['8934020403', '9889815000'];
-  const ADDRESS = 'Infront of Pillar No 9, Near Haryana Transport, Transport Nagar, Gorakhpur - 273016';
+  const ADDRESS = HI ? HI_ADDRESS : 'Infront of Pillar No 9, Near Haryana Transport, Transport Nagar, Gorakhpur - 273016';
   function footer(isCover){
     const footerY = style==='serene' ? (isCover ? H-138 : H-122) : (isCover ? H-112 : H-110);
     drawLogo(doc, W/2-50, footerY, 100, 55, 'center', 'middle');
@@ -2082,17 +2435,18 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     }
   }
 
-  const name = pdfSafe(clientName) || 'Client';
-  const venueText = pdfSafe(venue);
-  const dates = days.filter(d=>d.date).map(d=>fmtDate(d.date));
+  const name = T(clientName) || 'Client';
+  const venueText = T(venue);
+  const dates = days.filter(d=>d.date).map(d=>fmtD(d.date));
   const datesText = dates.join(' - ');
   const nDays = days.length;
-  const subtitle = pdfSafe((mood.coverSubtitle||'').replace(/\{days\}/g, `${nDays} Day${nDays>1?'s':''}`));
-  const topLine = pdfSafe(mood.topLine);
-  const coverTitle = pdfSafe(mood.coverTitle);
-  const welcome = pdfSafe(mood.welcomeText).replace(/\s*\n\s*/g,'\n');
+  const subtitle = T(menuSubtitleText(mood, nDays));
+  const topLine = T(mood.topLine);
+  const coverTitle = T(mood.coverTitle);
+  const welcome = T(mood.welcomeText).replace(/\s*\n\s*/g,'\n');
 
-  /* ===== COVER ===== */
+  /* ===== COVER (full menu only) ===== */
+  if(!scope){
   paint(true);
   if(style==='festive'){
     if(topLine){ font('times','bolditalic',14,C.secondary); doc.text(topLine, W/2, 45, {align:'center'}); }
@@ -2166,18 +2520,19 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     doc.setFillColor(...C.accent); doc.rect(mx, welcomeTop-26, 56, 4, 'F');
     if(fit){ font('helvetica','normal',fit.size,C.text); doc.text(fit.lines, mx, welcomeTop, {lineHeightFactor:1.6}); }
     let y = panelH + 56;
-    font('helvetica','normal',10,C.secondary); doc.text('Menu prepared for', mx, y); y += 30;
+    font('helvetica','normal',10,C.secondary); doc.text(HI ? HI_WORDS.preparedFor : 'Menu prepared for', mx, y); y += 30;
     font('helvetica','bold', fitText(name,'helvetica','bold',26,14,tw), C.text); doc.text(name, mx, y); y += 26;
     if(venueText){ font('helvetica','normal', fitText(venueText,'helvetica','normal',13,9,tw), C.text); doc.text(venueText, mx, y); y += 20; }
     if(datesText){ font('helvetica','normal',13,C.secondary); doc.text(datesText, mx, y); y += 20; }
     if(subtitle){ font('helvetica','normal',12,C.secondary); doc.text(subtitle, mx, y); }
   }
   footer(true);
+  }
 
   /* ===== MEAL PAGES ===== */
   function metaLine(day, meal){
     let meta = '';
-    if(day.date) meta += fmtDate(day.date);
+    if(day.date) meta += fmtD(day.date);
     if(meal.startTime){
       if(meta) meta += ' | ';
       meta += fmtTime12(meal.startTime);
@@ -2186,7 +2541,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     const pax = parseInt(meal.pax, 10);
     if(pax > 0){
       if(meta) meta += ' | ';
-      meta += `${pax.toLocaleString('en-IN')} Pax`;
+      meta += `${pax.toLocaleString('en-IN')} ${HI ? HI_WORDS.pax : 'Pax'}`;
     }
     return meta.trim();
   }
@@ -2197,12 +2552,13 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   function mealHeader(day, meal, contd){
     paint();
     drawLogo(doc, W - LOGO_BOX.right - LOGO_BOX.w, LOGO_BOX.top, LOGO_BOX.w, LOGO_BOX.h, 'right', 'top');
-    const label = pdfSafe(meal.label) || 'Menu';
+    const label = T(meal.label) || (HI ? 'मेन्यू' : 'Menu');
     const meta = metaLine(day, meal);
+    const contdWord = HI ? HI_WORDS.contd : '(continued)';
     let y;
     if(style==='festive'){
       if(contd){
-        font('times','italic',14,C.secondary); doc.text(`${label} (continued)`, W/2, 50+TOP, {align:'center'});
+        font('times','italic',14,C.secondary); doc.text(`${label} ${contdWord}`, W/2, 50+TOP, {align:'center'});
         doc.setDrawColor(...C.soft); doc.setLineWidth(0.5); doc.line(mx, 62+TOP, W-mx, 62+TOP);
         return 92+TOP;
       }
@@ -2215,7 +2571,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     }
     if(style==='serene'){
       if(contd){
-        font('times','italic',13,C.secondary); doc.text(`${label} (continued)`, W/2, 68+TOP, {align:'center'});
+        font('times','italic',13,C.secondary); doc.text(`${label} ${contdWord}`, W/2, 68+TOP, {align:'center'});
         return 104+TOP;
       }
       y = 82 + TOP;
@@ -2227,7 +2583,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     }
     // modern
     if(contd){
-      font('helvetica','bold',12,C.secondary); doc.text(`${label} (continued)`, mx, 48+TOP);
+      font('helvetica','bold',12,C.secondary); doc.text(`${label} ${contdWord}`, mx, 48+TOP);
       doc.setDrawColor(...C.soft); doc.setLineWidth(0.6); doc.line(mx, 58+TOP, W-mx, 58+TOP);
       return 86+TOP;
     }
@@ -2240,7 +2596,7 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   }
 
   function subcatHeading(title, y, draw){
-    const t = pdfSafe(title);
+    const t = title;   // already prepared with T()
     if(style==='modern'){
       if(draw){
         font('helvetica','bold',10.5,C.accent); doc.text(t.toUpperCase(), mx, y);
@@ -2263,9 +2619,9 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
 
   const nutText = n => n ? `${n.cal ?? '—'} kcal  ·  ${n.protein ?? '—'}g protein  ·  ${n.carbs ?? '—'}g carbs  ·  ${n.fat ?? '—'}g fat` : '';
   function dish(nameRaw, y, isLast, draw){
-    const dn = pdfSafe(nameRaw);
+    const dn = T(nameRaw, 'dish');
     const info = getInfo(nameRaw) || {};
-    const desc = showDesc ? pdfSafe(info.desc) : '';
+    const desc = showDesc ? (HI ? hiSafe(info.descHi) : pdfSafe(info.desc)) : '';
     const nut = showNut ? nutText(info.nutrition) : '';
     const centered = style==='serene';
     const x = centered ? W/2 : (style==='modern' ? mx : mx+10);
@@ -2276,8 +2632,9 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     const nameColor = style==='festive' ? C.heading : C.text;
     font(nameF[0], nameF[1], nameF[2], nameColor);
     const nameLines = doc.splitTextToSize(dn, contentW);
-    const step = nameF[2]*1.15;
-    if(draw) doc.text(nameLines, x, y, {...opt, lineHeightFactor:1.15});
+    const nameLH = HI ? 1.4 : 1.15;
+    const step = nameF[2]*nameLH;
+    if(draw) doc.text(nameLines, x, y, {...opt, lineHeightFactor:nameLH});
     y += (nameLines.length-1)*step;
 
     if(desc || nut){
@@ -2286,8 +2643,9 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
         const df = style==='modern' ? ['helvetica','normal',9.5] : ['times','italic',10.5];
         font(df[0], df[1], df[2], C.secondary);
         const lines = doc.splitTextToSize(desc, contentW).slice(0,2);
-        if(draw) doc.text(lines, xd, y, {...opt, lineHeightFactor:1.25});
-        y += lines.length*13;
+        const dLH = HI ? 1.55 : 1.25;
+        if(draw) doc.text(lines, xd, y + (HI ? 2 : 0), {...opt, lineHeightFactor:dLH});
+        y += HI ? lines.length*df[2]*dLH + 2 : lines.length*13;
       }
       if(nut){
         font('helvetica','normal',7.5,C.nutri);
@@ -2317,36 +2675,74 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
     return y;
   }
 
+  // scope: null = full menu, { mealId } = one meal, { mealId, scId } = one sub-category
+  let pageUsed = !scope;     // with a scope there is no cover, so the first page is still empty
+  let endY = null;           // where the last meal ended (for the notes)
   days.forEach(day=>{
     day.meals.forEach(meal=>{
-      const subs = meal.subcats.filter(s=>s.dishes.length);
+      if(scope && meal.id !== scope.mealId) return;
+      const subs = meal.subcats.filter(s=>s.dishes.length && (!scope || !scope.scId || s.id === scope.scId));
       if(!subs.length) return;
-      doc.addPage();
+      if(pageUsed) doc.addPage(); else pageUsed = true;
       let y = mealHeader(day, meal, false);
       const newPage = ()=>{ doc.addPage(); y = mealHeader(day, meal, true); };
       subs.forEach((sc, sIdx)=>{
-        const hasTitle = !!pdfSafe(sc.name);
+        const scTitle = T(sc.name);
+        const hasTitle = !!scTitle;
         const firstH = dish(sc.dishes[0], 0, sc.dishes.length===1, false);
-        const headH = hasTitle ? subcatHeading(sc.name, 0, false) : 0;
+        const headH = hasTitle ? subcatHeading(scTitle, 0, false) : 0;
         const gap = sIdx>0 ? 10 : 0;
         if(y + gap + headH + firstH > limitY + 14) newPage(); else y += gap;
-        if(hasTitle) y = subcatHeading(sc.name, y, true);
+        if(hasTitle) y = subcatHeading(scTitle, y, true);
         sc.dishes.forEach((dName, dIdx)=>{
           const isLast = dIdx === sc.dishes.length-1;
           const h = dish(dName, 0, isLast, false);
           if(y + h > limitY + 14){
             newPage();
-            if(hasTitle){ y = subcatHeading(`${sc.name} (contd.)`, y, true); }
+            if(hasTitle){ y = subcatHeading(`${scTitle} ${HI ? HI_WORDS.contd : '(contd.)'}`, y, true); }
           }
           y = dish(dName, y, isLast, true);
         });
       });
+      endY = y;
     });
   });
 
+  /* ===== NOTES (points after the last meal, full menu only) ===== */
+  const notePoints = scope ? [] : (notes || []).map(n=>T(n)).filter(Boolean);
+  if(notePoints.length){
+    const bodyF = style==='modern' ? ['helvetica','normal',11] : ['times','normal',12.5];
+    const lhF = HI ? 1.6 : 1.4;
+    const indent = 22;
+    const textW = W - 2*mx - indent - 10;
+    font(bodyF[0], bodyF[1], bodyF[2], C.text);
+    const blocks = notePoints.map(p=>doc.splitTextToSize(p, textW));
+    const pointH = b=> b.length*bodyF[2]*lhF + (HI ? 8 : 6);
+    const notesPage = ()=>{
+      doc.addPage(); paint();
+      drawLogo(doc, W - LOGO_BOX.right - LOGO_BOX.w, LOGO_BOX.top, LOGO_BOX.w, LOGO_BOX.h, 'right', 'top');
+      return (style==='serene' ? 118 : 100) + TOP;
+    };
+    let y;
+    if(endY != null && endY + 46 + 30 + pointH(blocks[0]) <= limitY) y = endY + 46;
+    else y = notesPage();
+    y = subcatHeading(HI ? HI_WORDS.notes : 'Please Note', y, true) + 4;
+    blocks.forEach(b=>{
+      if(y + pointH(b) > limitY + 14) y = notesPage();
+      font(bodyF[0], bodyF[1], bodyF[2], C.text);
+      const by = y - bodyF[2]*0.32;
+      if(style==='modern'){ doc.setFillColor(...C.accent); doc.rect(mx+4, by-2.2, 4.4, 4.4, 'F'); }
+      else diamond(mx+6, by, 3, C.accent);
+      doc.text(b, mx+indent, y, { lineHeightFactor:lhF });
+      y += pointH(b);
+    });
+  }
+
+  if(scope) return doc;
+
   /* ===== THANK YOU PAGE ===== */
-  const thanksTitle = pdfSafe(mood.thankYouTitle) || 'Thank You';
-  const thanksText = pdfSafe(mood.thankYouText).replace(/\s*\n\s*/g,'\n');
+  const thanksTitle = T(mood.thankYouTitle) || (HI ? 'धन्यवाद' : 'Thank You');
+  const thanksText = T(mood.thankYouText).replace(/\s*\n\s*/g,'\n');
   doc.addPage();
   paint(true);
   const tw = W - 2*mx;
@@ -2379,10 +2775,52 @@ function buildMenuDoc({ clientName, venue, days, mood, getInfo }){
   return doc;
 }
 
+function menuSubtitleText(mood, nDays){
+  return (mood.coverSubtitle || '').replace(/\{days\}/g, `${nDays} Day${nDays>1?'s':''}`);
+}
+/* Notes box: one point per line; leading "-", "*", "•" or "1." are dropped. */
+function menuNotesList(){
+  return document.getElementById('menuNotes').value.split('\n')
+    .map(l=>l.replace(/^\s*(?:[-*\u2022\u25CF\u25AA]+|\d{1,2}[.)])\s*/, '').replace(/\s+/g,' ').trim())
+    .filter(Boolean);
+}
+document.getElementById('menuNotes').addEventListener('input', ()=>{
+  const n = menuNotesList().length;
+  document.getElementById('menuNotesHint').textContent = n
+    ? `${n} point${n>1?'s':''} will print after the last meal.`
+    : 'Each line prints as a separate point after the last meal. Leave empty to skip.';
+});
+
+let menuLang = 'en';      // 'en' | 'hi' — saved with the client
+let pvScope = 'all';      // 'all' | 'm:<mealId>' | 's:<mealId>:<subcatId>'
+function parseScope(v){
+  if(!v || v === 'all') return null;
+  const [k, mealId, scId] = v.split(':');
+  const meal = days.flatMap(d=>d.meals).find(m=>m.id===mealId);
+  if(!meal) return null;
+  if(k === 's'){
+    const sc = meal.subcats.find(x=>x.id===scId);
+    if(!sc || !sc.dishes.length) return null;
+    return { mealId, scId, meal, sc };
+  }
+  return totalDishCount(meal) ? { mealId, meal } : null;
+}
+function scopeDishes(scope){
+  if(!scope) return allMenuDishes();
+  if(scope.sc) return [...scope.sc.dishes];
+  return mealDishes(scope.meal);
+}
 function menuFileName(){
   const clientName = document.getElementById('clientName').value.trim() || 'Client';
-  const safe = clientName.replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'') || 'menu';
-  return `Menu_${safe}.pdf`;
+  const part = v=>String(v||'').replace(/[^a-z0-9]+/gi,'_').replace(/^_+|_+$/g,'');
+  const safe = part(clientName) || 'menu';
+  const scope = parseScope(pvScope);
+  let extra = '';
+  if(scope){
+    const day = days.find(d=>d.meals.includes(scope.meal));
+    extra = '_' + [days.length > 1 ? part(day && day.label) : '', part(scope.meal.label), scope.sc ? part(scope.sc.name) || 'Section' : ''].filter(Boolean).join('_');
+  }
+  return `Menu_${safe}${extra}${menuLang==='hi' ? '_Hindi' : ''}.pdf`;
 }
 function currentMenuDoc(){
   const mood = getMood(currentMoodId);
@@ -2390,8 +2828,44 @@ function currentMenuDoc(){
     clientName: document.getElementById('clientName').value.trim() || 'Client',
     venue: document.getElementById('venue').value.trim(),
     days, mood,
-    getInfo: name => aiCache[aiKey(mood, name)]
+    getInfo: name => aiCache[aiKey(mood, name)],
+    lang: menuLang,
+    tr: (text, kind)=> hiGet(kind, text),
+    scope: parseScope(pvScope),
+    notes: menuNotesList()
   });
+}
+/* Gets every Hindi translation the current menu needs. Returns the number that failed.
+   Runs one at a time, so two quick preview refreshes don't translate the same text twice. */
+let hiPrepChain = Promise.resolve(0);
+function prepareHindi(){
+  hiPrepChain = hiPrepChain.catch(()=>0).then(prepareHindiNow);
+  return hiPrepChain;
+}
+async function prepareHindiNow(){
+  const mood = getMood(currentMoodId);
+  const scope = parseScope(pvScope);
+  const dishes = scopeDishes(scope);
+  const texts = [];
+  days.forEach(d=>d.meals.forEach(m=>{
+    if(scope && m.id !== scope.mealId) return;
+    if(!totalDishCount(m)) return;
+    texts.push(m.label);
+    m.subcats.forEach(sc=>{ if(sc.dishes.length && (!scope || !scope.scId || sc.id===scope.scId)) texts.push(sc.name); });
+  }));
+  if(!scope){
+    texts.push(document.getElementById('clientName').value.trim(), document.getElementById('venue').value.trim(),
+      mood.topLine, mood.coverTitle, mood.welcomeText, menuSubtitleText(mood, days.length), mood.thankYouTitle, mood.thankYouText,
+      ...menuNotesList());
+  }
+  await ensureHindiFonts();
+  const showDesc = mood.showDescriptions !== false;
+  const res = await Promise.all([
+    ensureHindi('text', texts),
+    ensureHindi('dish', dishes),
+    showDesc ? ensureHindiDescs(mood, dishes) : 0
+  ]);
+  return res.reduce((a,b)=>a+b, 0);
 }
 
 /* =========================================================================
@@ -2415,14 +2889,49 @@ function setPvTab(tab){
 }
 pv.querySelectorAll('.pv-tabs button').forEach(b=>b.addEventListener('click', ()=>setPvTab(b.dataset.tab)));
 
-document.getElementById('pdfMenuBtn').addEventListener('click', openPreview);
-async function openPreview(){
+document.getElementById('pdfMenuBtn').addEventListener('click', ()=>openPreview('all'));
+function renderScopeSelect(){
+  const sel = document.getElementById('pvScope');
+  let h = '<option value="all">Full menu</option>';
+  days.forEach(day=>{
+    const meals = day.meals.filter(m=>totalDishCount(m));
+    if(!meals.length) return;
+    const dl = (day.label || 'Day') + (day.date ? ' · ' + fmtDate(day.date) : '');
+    h += `<optgroup label="${esc(dl)}">`;
+    meals.forEach(m=>{
+      h += `<option value="m:${m.id}">${esc(m.label || 'Meal')} — whole meal</option>`;
+      const subs = m.subcats.filter(sc=>sc.dishes.length);
+      if(subs.length > 1 || (subs.length === 1 && subs[0].name.trim()))
+        subs.forEach(sc=>{ h += `<option value="s:${m.id}:${sc.id}">&nbsp;&nbsp;${esc(m.label || 'Meal')} › ${esc(sc.name.trim() || 'No heading')}</option>`; });
+    });
+    h += '</optgroup>';
+  });
+  sel.innerHTML = h;
+  if(!parseScope(pvScope)) pvScope = 'all';
+  sel.value = pvScope;
+}
+async function openPreview(scope='all'){
+  pvScope = scope || 'all';
+  if(pvScope !== 'all' && !parseScope(pvScope)) pvScope = 'all';
   pv.hidden = false; document.body.classList.add('no-scroll');
   document.getElementById('pvMood').value = currentMoodId;
+  document.getElementById('pvLang').value = menuLang;
+  renderScopeSelect();
   renderArrange();
   await renderPreviewPages();
   await loadAiLinesAndRender(false);
 }
+document.getElementById('pvScope').addEventListener('change', async e=>{
+  pvScope = e.target.value;
+  document.getElementById('pvPagesInner').innerHTML = '';
+  await renderPreviewPages();
+  await loadAiLinesAndRender(false);
+});
+document.getElementById('pvLang').addEventListener('change', async e=>{
+  menuLang = e.target.value === 'hi' ? 'hi' : 'en';
+  await loadAiLinesAndRender(false);
+  await renderPreviewPages();
+});
 document.getElementById('pvClose').addEventListener('click', ()=>{
   pv.hidden = true; pvToken++;
   closeModal('previewModal');
@@ -2436,15 +2945,24 @@ document.getElementById('pvMood').addEventListener('change', async e=>{
   await loadAiLinesAndRender(false);
 });
 document.getElementById('pvRewrite').addEventListener('click', ()=>loadAiLinesAndRender(true));
-document.getElementById('pvDownload').addEventListener('click', ()=>{
-  try { currentMenuDoc().save(menuFileName()); }
+document.getElementById('pvDownload').addEventListener('click', async ()=>{
+  const btn = document.getElementById('pvDownload');
+  btn.disabled = true;
+  try {
+    if(menuLang === 'hi'){
+      const failed = await prepareHindi();
+      if(failed) showToast(`${failed} item${failed>1?'s':''} could not be translated and stay in English.`, 'error');
+    }
+    currentMenuDoc().save(menuFileName());
+  }
   catch(e){ console.error(e); showToast('Could not create the PDF: ' + e.message, 'error'); }
+  finally { btn.disabled = false; }
 });
 
 async function loadAiLinesAndRender(force){
   const mood = getMood(currentMoodId);
-  if(mood.showDescriptions===false && mood.showNutrition===false) return;
-  const names = allMenuDishes();
+  if(mood.showDescriptions===false && (mood.showNutrition===false || menuLang==='hi')) return;
+  const names = scopeDishes(parseScope(pvScope));
   const missing = force ? names.length : names.filter(n=>!aiCache[aiKey(mood,n)]).length;
   if(!missing) return;
   const btn = document.getElementById('pvRewrite'); btn.disabled = true;
@@ -2516,6 +3034,13 @@ async function renderPreviewPages(){
   if(pv.hidden) return;
   const token = ++pvToken;
   const holder = document.getElementById('pvPagesInner');
+  if(menuLang === 'hi'){
+    setPvStatus('Preparing the Hindi menu...');
+    const failed = await prepareHindi();
+    if(token !== pvToken) return;
+    setPvStatus('');
+    if(failed) showToast(`${failed} item${failed>1?'s':''} could not be translated and stay in English. Try again in a moment.`, 'error');
+  }
   let doc;
   try { doc = currentMenuDoc(); }
   catch(e){ console.error(e); setPvStatus('Could not build the PDF: ' + e.message); return; }
@@ -2603,6 +3128,8 @@ function renderQuotePickers(){
     : '<option value="">No quotation details</option>';
   main.value = currentQuoteId;
   main.disabled = !quoteProfiles.length;
+  const qm = document.getElementById('qmProfile');
+  qm.innerHTML = main.innerHTML; qm.value = currentQuoteId; qm.disabled = !quoteProfiles.length;
   const pick = document.getElementById('bsProfile');
   pick.innerHTML = quoteProfiles.map(p=>`<option value="${esc(p.id)}">${esc(p.name || 'Untitled')}</option>`).join('')
     + '<option value="__new">+ New set of details</option>';
@@ -2790,7 +3317,180 @@ document.getElementById('bsPreviewQuote').addEventListener('click', ()=>{
 /* =========================================================================
    PDF — QUOTATION (Table format with pricing)
    ========================================================================= */
-document.getElementById('pdfQuoteBtn').addEventListener('click', ()=>generateQuotePDF());
+/* =========================================================================
+   QUOTATION EDITOR — editable rows + saved terms & conditions
+   quoteRows: null = rows come from the meals; an array once the user edits a cell.
+   quoteTerms: the term texts ticked for this client. Both are saved with the client.
+   termsLib: every saved term, Firestore collection "terms" { text, order, createdAt }
+   ========================================================================= */
+let quoteRows = null;
+let quoteTerms = [];
+let termsLib = [];
+let qmWork = [];
+
+function quoteRowsFromMenu(qDays){
+  const rows = [];
+  qDays.forEach(day=>day.meals.forEach(meal=>{
+    if(!totalDishCount(meal) && !(parseFloat(meal.price) > 0)) return;
+    const lines = [String(meal.label || 'Meal').trim()];
+    if(day.date) lines.push(fmtDate(day.date));
+    else if(qDays.length > 1 && day.label) lines.push(day.label);
+    if(meal.startTime) lines.push(fmtTime12(meal.startTime) + (meal.endTime ? ' - ' + fmtTime12(meal.endTime) : ''));
+    rows.push({ sno:String(rows.length + 1), desc:lines.join('\n'), pax:String(meal.pax || ''), rate:String(meal.price || '') });
+  }));
+  return rows;
+}
+const qNum = v=>{ const n = parseFloat(String(v ?? '').replace(/,/g,'')); return isFinite(n) ? n : 0; };
+const inr = n=>'₹' + Math.round(n).toLocaleString('en-IN');
+
+function subscribeTerms(){
+  if(!db) return;
+  db.collection('terms').onSnapshot(snap=>{
+    termsLib = [];
+    snap.forEach(d=>{ const t = String(d.data().text || '').trim(); if(t) termsLib.push({ id:d.id, text:t, order:d.data().order || 0 }); });
+    termsLib.sort((a,b)=>a.order-b.order || a.text.localeCompare(b.text));
+    if(!document.getElementById('quoteModal').hidden) renderQmTerms();
+  }, err=>{
+    console.error('Terms error:', err);
+    showToast('Could not load saved terms. Check that Firestore rules allow the "terms" collection.', 'error');
+  });
+}
+
+function openQuoteModal(){
+  qmWork = quoteRows ? clone(quoteRows) : quoteRowsFromMenu(days);
+  if(quoteRows) quoteRows = qmWork;
+  renderQmRows();
+  renderQmTerms();
+  renderQuotePickers();
+  document.getElementById('qmTermNew').value = '';
+  openModal('quoteModal');
+}
+document.getElementById('pdfQuoteBtn').addEventListener('click', openQuoteModal);
+
+function markQuoteEdited(){ quoteRows = qmWork; }
+/* When every S.No. is still a plain 1, 2, 3... keep them in order after adding or removing a row */
+function renumberIfAuto(){
+  if(qmWork.every(r=>/^\d*$/.test(String(r.sno).trim()))) qmWork.forEach((r,i)=>{ r.sno = String(i+1); });
+}
+function renderQmRows(){
+  const tb = document.getElementById('qmRows');
+  tb.innerHTML = '';
+  if(!qmWork.length){
+    tb.innerHTML = '<tr><td colspan="6" class="qm-empty">No rows. Add one, or rebuild from the menu.</td></tr>';
+  }
+  qmWork.forEach((r, i)=>{
+    const tr = document.createElement('tr');
+    tr.innerHTML = `
+      <td class="c-sno"><input type="text" class="q-sno" value="${esc(r.sno)}" aria-label="Serial number"></td>
+      <td><textarea class="q-desc" rows="3" aria-label="Description">${esc(r.desc)}</textarea></td>
+      <td class="c-num"><input type="text" inputmode="decimal" class="q-pax" value="${esc(r.pax)}" placeholder="0" aria-label="Pax"></td>
+      <td class="c-num"><input type="text" inputmode="decimal" class="q-rate" value="${esc(r.rate)}" placeholder="0" aria-label="Rate"></td>
+      <td class="c-amt"></td>
+      <td class="c-x"><button type="button" class="btn btn-danger btn-sm qm-del" title="Remove this row">✕</button></td>`;
+    const amt = tr.querySelector('.c-amt');
+    const showAmt = ()=>{ const a = qNum(r.pax)*qNum(r.rate); amt.textContent = a ? inr(a) : '—'; };
+    showAmt();
+    [['.q-sno','sno'],['.q-desc','desc'],['.q-pax','pax'],['.q-rate','rate']].forEach(([sel,key])=>{
+      tr.querySelector(sel).addEventListener('input', e=>{ r[key] = e.target.value; markQuoteEdited(); showAmt(); updateQmTotal(); });
+    });
+    tr.querySelector('.qm-del').addEventListener('click', ()=>{
+      qmWork.splice(i, 1); renumberIfAuto(); markQuoteEdited(); renderQmRows();
+    });
+    tb.appendChild(tr);
+  });
+  updateQmTotal();
+}
+function updateQmTotal(){
+  let total = 0, rateSum = 0;
+  qmWork.forEach(r=>{ total += qNum(r.pax)*qNum(r.rate); rateSum += qNum(r.rate); });
+  document.getElementById('qmTotal').textContent = total ? `Grand total ${inr(total)}` : (rateSum ? `Total rate ${inr(rateSum)}` : '');
+}
+document.getElementById('qmAddRow').addEventListener('click', ()=>{
+  qmWork.push({ sno:String(qmWork.length + 1), desc:'', pax:'', rate:'' });
+  renumberIfAuto(); markQuoteEdited(); renderQmRows();
+  const ds = document.querySelectorAll('#qmRows .q-desc'); ds[ds.length-1]?.focus();
+});
+document.getElementById('qmReset').addEventListener('click', ()=>{
+  if(quoteRows && !confirm('Throw away your changes to the rows and rebuild them from the meals?')) return;
+  quoteRows = null;
+  qmWork = quoteRowsFromMenu(days);
+  renderQmRows();
+});
+
+function renderQmTerms(){
+  const box = document.getElementById('qmTerms');
+  const ticked = new Set(quoteTerms.map(norm));
+  const inLib = new Set(termsLib.map(t=>norm(t.text)));
+  const extras = quoteTerms.filter(t=>!inLib.has(norm(t)));
+  box.innerHTML = '';
+  if(!termsLib.length && !extras.length){
+    box.innerHTML = '<div class="qm-empty">No saved terms yet. Type one below and click Save &amp; add.</div>';
+    return;
+  }
+  const row = (text, checked, libItem)=>{
+    const el = document.createElement('div');
+    el.className = 'qm-term' + (libItem ? '' : ' extra');
+    el.innerHTML = `<input type="checkbox" ${checked ? 'checked' : ''} aria-label="Print this term"><span class="tx">${esc(text)}${libItem ? '' : '<small>Not in your saved list any more</small>'}</span>` +
+      (libItem ? '<button type="button" class="btn btn-danger btn-sm qm-term-del" title="Delete from saved terms">Delete</button>' : '');
+    const cb = el.querySelector('input');
+    el.querySelector('.tx').addEventListener('click', ()=>{ cb.checked = !cb.checked; cb.dispatchEvent(new Event('change')); });
+    cb.addEventListener('change', ()=>{
+      const set = new Set(quoteTerms.map(norm));
+      if(cb.checked) set.add(norm(text)); else set.delete(norm(text));
+      setQuoteTermsFrom(set, cb.checked ? text : null);
+    });
+    if(libItem) el.querySelector('.qm-term-del').addEventListener('click', ()=>deleteTerm(libItem));
+    box.appendChild(el);
+  };
+  termsLib.forEach(t=>row(t.text, ticked.has(norm(t.text)), t));
+  extras.forEach(t=>row(t, true, null));
+}
+/* Keeps ticked terms in the saved-list order, then any ticked terms no longer in the list. */
+function setQuoteTermsFrom(set, justAdded){
+  const all = [...termsLib.map(t=>t.text), ...quoteTerms.filter(t=>!termsLib.some(x=>norm(x.text)===norm(t)))];
+  if(justAdded && !all.some(t=>norm(t)===norm(justAdded))) all.push(justAdded);
+  quoteTerms = all.filter(t=>set.has(norm(t)));
+}
+document.getElementById('qmTermsAll').addEventListener('click', ()=>{
+  setQuoteTermsFrom(new Set([...termsLib.map(t=>norm(t.text)), ...quoteTerms.map(norm)])); renderQmTerms();
+});
+document.getElementById('qmTermsNone').addEventListener('click', ()=>{ quoteTerms = []; renderQmTerms(); });
+document.getElementById('qmTermAdd').addEventListener('click', addTermFromBox);
+document.getElementById('qmTermNew').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); addTermFromBox(); } });
+async function addTermFromBox(){
+  const inp = document.getElementById('qmTermNew');
+  const text = inp.value.replace(/\s+/g,' ').trim();
+  if(!text){ showToast('Type a term first', 'error'); inp.focus(); return; }
+  const set = new Set(quoteTerms.map(norm)); set.add(norm(text));
+  const existing = termsLib.find(t=>norm(t.text)===norm(text));
+  if(!existing){
+    const id = uid() + Date.now().toString(36);
+    const order = termsLib.reduce((m,t)=>Math.max(m, t.order||0), 0) + 1;
+    termsLib.push({ id, text, order });
+    if(db){
+      try { await db.collection('terms').doc(id).set({ text, order, createdAt:new Date().toISOString() }); showToast('Term saved'); }
+      catch(e){ console.error(e); showToast('Term not saved to cloud: ' + e.message, 'error'); }
+    }
+  } else showToast('This term is already saved, so it was ticked');
+  setQuoteTermsFrom(set, text);
+  inp.value = '';
+  renderQmTerms();
+  inp.focus();
+}
+async function deleteTerm(t){
+  if(!confirm(`Delete this saved term?\n\n"${t.text}"\n\nIt stays on this quotation only if it is ticked.`)) return;
+  termsLib = termsLib.filter(x=>x.id!==t.id);
+  renderQmTerms();
+  if(db){
+    try { await db.collection('terms').doc(t.id).delete(); }
+    catch(e){ showToast('Delete failed: ' + e.message, 'error'); }
+  }
+}
+document.getElementById('qmProfile').addEventListener('change', e=>setCurrentQuote(e.target.value));
+document.getElementById('qmDownload').addEventListener('click', ()=>{
+  try { generateQuotePDF(null, false, { rows: qmWork, terms: quoteTerms }); }
+  catch(e){ console.error(e); showToast('Could not create the quotation: ' + e.message, 'error'); }
+});
 
 /* Draws the uploaded QR image, or a QR made from the UPI ID, in a square box. */
 function drawPayQr(doc, B, qrObj, qx, qy, size){
@@ -2892,7 +3592,7 @@ function generateDetailsPDF(B, setName){
   doc.save(`Payment_Details_${safe}.pdf`);
 }
 
-function generateQuotePDF(details, sample=false){
+function generateQuotePDF(details, sample=false, opts={}){
   const B = details || bizFor(currentQuoteId) || {};
   const qDays = sample ? SAMPLE_QUOTE_DAYS : days;
   const { jsPDF } = window.jspdf;
@@ -2939,71 +3639,88 @@ function generateQuotePDF(details, sample=false){
     doc.text(venueQ, mx+55, y, {maxWidth: W-mx*2-55});
   }
   y+=18;
-  doc.setDrawColor(...ruleRGB); doc.line(mx,y+4,W-mx,y+4); y+=26;
+  doc.setDrawColor(...ruleRGB); doc.line(mx,y+4,W-mx,y+4); y+=24;
 
-  let grandTotalPerPlate=0, grandTotalAmount=0;
-  qDays.forEach(day=>{
-    if(y>700){doc.addPage();y=50;}
-    const dayLabel=`${day.label}`+(day.date?`  ·  ${fmtDate(day.date)}`:'');
-    doc.setFillColor(...saffRGB);
-    doc.roundedRect(mx,y-14,16,16,3,3,'F');
-    doc.setFont('times','bold'); doc.setFontSize(14); doc.setTextColor(...inkRGB);
-    doc.text(pdfSafe(dayLabel),mx+24,y); y+=10;
-
-    const body=[];
-    let dayTotal=0;
-    day.meals.forEach(meal=>{
-      if(totalDishCount(meal)===0) return;
-      const price=parseFloat(meal.price)||0;
-      const pax=parseFloat(meal.pax)||0;
-      dayTotal+=price;
-      grandTotalPerPlate+=price;
-      if(price>0 && pax>0){ grandTotalAmount+=price*pax; }
-      let label=meal.label;
-      if(meal.startTime) label+=`\n${fmtTime12(meal.startTime)}${meal.endTime?' - '+fmtTime12(meal.endTime):''}`;
-      if(meal.pax) label+=`\n${meal.pax} Pax`;
-      const dishesText = meal.subcats.filter(s=>s.dishes.length)
-        .map(s=>(s.name.trim() ? `${s.name.trim()}: ` : '') + s.dishes.join(', ')).join('\n');
-      body.push([pdfSafe(label), pdfSafe(dishesText), price?`Rs. ${price.toLocaleString('en-IN')}`:'—']);
-    });
-    if(!body.length) body.push(['—','No dishes selected','—']);
-
-    doc.autoTable({
-      startY:y+4, head:[['Meal','Dishes','Price / Plate']], body:body,
-      margin:{left:mx,right:mx},
-      styles:{font:'helvetica',fontSize:9,cellPadding:7,textColor:inkRGB,lineColor:ruleRGB,lineWidth:.6,valign:'top'},
-      headStyles:{fillColor:inkRGB,textColor:[240,235,220],fontStyle:'bold',fontSize:9.5},
-      alternateRowStyles:{fillColor:[248,245,238]},
-      columnStyles:{0:{cellWidth:100,fontStyle:'bold'},1:{cellWidth:W-mx*2-100-90},2:{cellWidth:90,halign:'right'}},
-      didDrawPage:data=>{y=data.cursor.y;}
-    });
-    y=doc.lastAutoTable.finalY+20;
-    doc.setFont('helvetica','bold'); doc.setFontSize(10); doc.setTextColor(...herbRGB);
-    doc.text(pdfSafe(`${day.label} total per plate: Rs. ${dayTotal.toLocaleString('en-IN')}`),W-mx,y,{align:'right'});
-    y+=30;
+  /* ----- Rows: S.No. | Description (meal, date, time) | Pax | Rate ----- */
+  const rows = (opts.rows || (sample ? quoteRowsFromMenu(SAMPLE_QUOTE_DAYS) : (quoteRows || quoteRowsFromMenu(days))))
+    .filter(r=>String(r.desc||'').trim() || String(r.pax||'').trim() || String(r.rate||'').trim());
+  let grandTotal = 0, rateSum = 0;
+  const body = rows.map(r=>{
+    const pax = qNum(r.pax), rate = qNum(r.rate);
+    rateSum += rate;
+    if(pax > 0 && rate > 0) grandTotal += pax*rate;
+    const paxTxt = String(r.pax||'').trim(), rateTxt = String(r.rate||'').trim();
+    return [
+      pdfSafe(r.sno) || '',
+      pdfSafe(r.desc) || '—',
+      /^[\d.,\s]+$/.test(paxTxt) && pax ? pax.toLocaleString('en-IN') : (pdfSafe(paxTxt) || '—'),
+      /^[\d.,\s]+$/.test(rateTxt) && rate ? `Rs. ${rate.toLocaleString('en-IN')}` : (pdfSafe(rateTxt) || '—')
+    ];
   });
+  if(!body.length) body.push(['', 'No items', '—', '—']);
 
-  if(y>720){doc.addPage();y=60;}
-  doc.setDrawColor(...ruleRGB); doc.line(mx,y,W-mx,y); y+=24;
-  const hasGrand = grandTotalAmount > 0;
-  const boxL=W-mx-260, boxW=260, boxH=hasGrand?88:38;
-  doc.setFillColor(...inkRGB);
-  doc.roundedRect(boxL,y-20,boxW,boxH,8,8,'F');
-  doc.setTextColor(240,235,220);
-  doc.setFont('helvetica','bold'); doc.setFontSize(11);
-  doc.text('Total per plate (all days)',boxL+20,y-3);
-  doc.setFontSize(13);
-  doc.text(`Rs. ${grandTotalPerPlate.toLocaleString('en-IN')}`,boxL+boxW-20,y-3,{align:'right'});
-  if(hasGrand){
-    doc.setDrawColor(90,84,66); doc.setLineWidth(.6);
-    doc.line(boxL+20,y+10,boxL+boxW-20,y+10);
+  doc.autoTable({
+    startY:y, head:[['S.No.','Description','Pax','Rate']], body,
+    margin:{left:mx,right:mx},
+    styles:{font:'helvetica',fontSize:10,cellPadding:8,textColor:inkRGB,lineColor:ruleRGB,lineWidth:.6,valign:'top'},
+    headStyles:{fillColor:inkRGB,textColor:[240,235,220],fontStyle:'bold',fontSize:10},
+    alternateRowStyles:{fillColor:[248,245,238]},
+    columnStyles:{0:{cellWidth:52,halign:'center'},1:{cellWidth:W-mx*2-52-80-100},2:{cellWidth:80,halign:'right'},3:{cellWidth:100,halign:'right',fontStyle:'bold'}},
+    // first line of each description (the meal name) in bold
+    didParseCell:data=>{
+      if(data.section==='head') data.cell.styles.halign = ['center','left','right','right'][data.column.index];
+      if(data.section==='body' && data.column.index===1) data.cell.styles.fontStyle = 'normal';
+    },
+    didDrawCell:data=>{
+      if(data.section!=='body' || data.column.index!==1) return;
+      const first = data.cell.text && data.cell.text[0];
+      if(!first) return;
+      const c = data.cell, fs = c.styles.fontSize;
+      const fc = c.styles.fillColor;
+      doc.setFillColor(...(Array.isArray(fc) ? fc : typeof fc === 'number' ? [fc,fc,fc] : [255,255,255]));
+      doc.rect(c.x + c.padding('left') - 1, c.y + c.padding('top') - 1, doc.getTextWidth(first) + 2, fs*1.15 + 1, 'F');
+      doc.setFont('helvetica','bold'); doc.setFontSize(fs); doc.setTextColor(...inkRGB);
+      doc.text(first, c.x + c.padding('left'), c.y + c.padding('top') + fs*0.86);
+    }
+  });
+  y = doc.lastAutoTable.finalY + 22;
+
+  if(grandTotal || rateSum){
+    if(y + 50 > H - 50){ doc.addPage(); y = 60; }
+    const boxW = 280, boxL = W - mx - boxW, boxH = 46;
+    doc.setFillColor(...inkRGB);
+    doc.roundedRect(boxL, y, boxW, boxH, 8, 8, 'F');
+    doc.setTextColor(240,235,220);
     doc.setFont('helvetica','normal'); doc.setFontSize(10.5);
-    doc.text('Grand total (price \u00D7 guests)',boxL+20,y+30);
+    doc.text(grandTotal ? 'Grand total (pax \u00D7 rate)' : 'Total rate', boxL+18, y+28);
     doc.setFont('helvetica','bold'); doc.setFontSize(15);
-    doc.text(`Rs. ${Math.round(grandTotalAmount).toLocaleString('en-IN')}`,boxL+boxW-20,y+54,{align:'right'});
-  }
+    doc.text(`Rs. ${Math.round(grandTotal || rateSum).toLocaleString('en-IN')}`, boxL+boxW-18, y+29, {align:'right'});
+    y += boxH + 34;
+  } else y += 14;
 
-  y += boxH - 20 + 34;
+  /* ----- Terms & conditions ----- */
+  const terms = (opts.terms || (sample ? termsLib.slice(0,4).map(t=>t.text) : quoteTerms)).map(t=>pdfSafe(t)).filter(Boolean);
+  if(terms.length){
+    doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+    const firstLines = doc.splitTextToSize(terms[0], W - mx*2 - 22);
+    if(y + 34 + firstLines.length*13 > H - 50){ doc.addPage(); y = 60; }
+    doc.setFont('times','bold'); doc.setFontSize(14); doc.setTextColor(...inkRGB);
+    doc.text('Terms & Conditions', mx, y);
+    doc.setDrawColor(...ruleRGB); doc.setLineWidth(.6); doc.line(mx, y+7, W-mx, y+7);
+    y += 26;
+    terms.forEach((t, i)=>{
+      doc.setFont('helvetica','normal'); doc.setFontSize(9.5);
+      const lines = doc.splitTextToSize(t, W - mx*2 - 22);
+      const h = lines.length*9.5*1.4;
+      if(y + h > H - 46){ doc.addPage(); y = 60; }
+      doc.setTextColor(...softRGB); doc.setFont('helvetica','bold');
+      doc.text(`${i+1}.`, mx, y);
+      doc.setTextColor(...inkRGB); doc.setFont('helvetica','normal');
+      doc.text(lines, mx+22, y, { lineHeightFactor:1.4 });
+      y += h + 5;
+    });
+    y += 22;
+  }
 
   /* ----- Payment details ----- */
   const bankRows = [
@@ -3058,6 +3775,10 @@ function serializeState(){
     numDays: days.length,
     moodId: currentMoodId,
     quoteProfileId: currentQuoteId,
+    menuLang,
+    menuNotes: document.getElementById('menuNotes').value,
+    quoteRows: quoteRows ? quoteRows.map(r=>({ sno:String(r.sno??''), desc:String(r.desc??''), pax:String(r.pax??''), rate:String(r.rate??'') })) : null,
+    quoteTerms: [...quoteTerms],
     savedAt: new Date().toISOString(),
     days: days.map(d => ({
       label: d.label,
@@ -3081,6 +3802,11 @@ function deserializeState(data){
   if(data.moodId && moods.find(m=>m.id===data.moodId)) currentMoodId = data.moodId;
   if(data.quoteProfileId && quoteProfiles.find(p=>p.id===data.quoteProfileId)) setCurrentQuote(data.quoteProfileId);
   renderMoodSelects();
+  menuLang = data.menuLang === 'hi' ? 'hi' : 'en';
+  document.getElementById('menuNotes').value = data.menuNotes || '';
+  document.getElementById('menuNotes').dispatchEvent(new Event('input'));
+  quoteRows = Array.isArray(data.quoteRows) ? data.quoteRows.map(r=>({ sno:String(r.sno??''), desc:String(r.desc??''), pax:String(r.pax??''), rate:String(r.rate??'') })) : null;
+  quoteTerms = Array.isArray(data.quoteTerms) ? data.quoteTerms.map(String).filter(Boolean) : [];
   days = (data.days || []).map(d => ({
     label: d.label || 'Day',
     date: d.date || '',
@@ -3292,6 +4018,7 @@ async function cloneClient(docId){
   copy.savedAt = new Date().toISOString();
   copy.clonedFrom = srcName;
   (copy.days || []).forEach(d => { d.date = ''; });
+  copy.quoteRows = null;   // the rows held the old dates; they are rebuilt from the menu
 
   try {
     await db.collection('clients').doc(clientDocId(newName)).set(copy);
@@ -3325,6 +4052,8 @@ updateSummary();
 if(initFirebase()){
   subscribeMoods();
   subscribeBiz();
+  subscribeBuckets();
+  subscribeTerms();
   subscribeLibrary();
   loadClientList();
 } else {
