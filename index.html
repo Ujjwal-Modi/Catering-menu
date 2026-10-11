@@ -198,6 +198,7 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
 .toast.show{transform:translateY(0);opacity:1;}
 .toast.error{background:var(--terracotta);}
 .toast.success{background:var(--herb-deep);}
+.toast.warn{background:var(--saffron-deep);white-space:pre-line;line-height:1.5;max-width:min(420px, calc(100vw - 40px));}
 
 .btn-save{background:var(--herb);color:#fff;}
 .btn-save:hover{background:var(--herb-deep);}
@@ -738,11 +739,11 @@ const toastEl = document.createElement('div');
 toastEl.className = 'toast';
 document.body.appendChild(toastEl);
 let toastTimer = null;
-function showToast(msg, type='success'){
+function showToast(msg, type='success', ms){
   toastEl.textContent = msg;
   toastEl.className = 'toast show ' + type;
   clearTimeout(toastTimer);
-  toastTimer = setTimeout(()=>{ toastEl.className = 'toast'; }, 3000);
+  toastTimer = setTimeout(()=>{ toastEl.className = 'toast'; }, ms || (type==='warn' ? 7000 : 3000));
 }
 
 /* =========================================================================
@@ -1209,6 +1210,32 @@ function makeEmptyDay(idx){
 }
 function mealDishes(meal){ return meal.subcats.flatMap(s=>s.dishes); }
 function totalDishCount(meal){ return mealDishes(meal).length; }
+/* Every place in the current menu where a dish is used, e.g.
+   "Day 1 (12 Oct 2026) · Lunch, 12:30PM · Sweets". skipMeal leaves out one meal. */
+function dishUsesInMenu(name, skipMeal){
+  const out = [];
+  days.forEach((day, dIdx)=>day.meals.forEach(meal=>{
+    if(meal === skipMeal) return;
+    meal.subcats.forEach(sc=>{
+      if(!sc.dishes.some(n=>norm(n)===norm(name))) return;
+      const dayTxt = (day.label || `Day ${dIdx+1}`) + (day.date ? ` (${fmtDate(day.date)})` : '');
+      const mealTxt = (meal.label || 'Meal') + (meal.startTime ? `, ${fmtTime12(meal.startTime)}` : '');
+      out.push(`${dayTxt} · ${mealTxt}` + (sc.name.trim() ? ` · ${sc.name.trim()}` : ''));
+    });
+  }));
+  return out;
+}
+/* Builds the "repeated" notice for dishes just added to a meal. Returns '' when nothing is repeated. */
+function repeatNotice(names, meal){
+  const reps = names.map(n=>({ n, uses: dishUsesInMenu(n, meal) })).filter(x=>x.uses.length);
+  if(!reps.length) return '';
+  if(reps.length === 1){
+    const { n, uses } = reps[0];
+    return `"${n}" is repeated in this menu.\nAlready used in:\n` + uses.map(u=>'• ' + u).join('\n');
+  }
+  const shown = reps.slice(0, 4).map(({ n, uses })=>`• ${n}: ${uses[0]}${uses.length>1 ? ` (+${uses.length-1} more)` : ''}`);
+  return `${reps.length} dishes are repeated in this menu:\n` + shown.join('\n') + (reps.length > 4 ? `\n...and ${reps.length-4} more` : '');
+}
 function allMenuDishes(){ return days.flatMap(d=>d.meals.flatMap(mealDishes)); }
 
 /* =========================================================================
@@ -1443,16 +1470,19 @@ function buildSubcatEl(mealEl, meal, sc){
     name=>{
       const exists = meal.subcats.find(s=>s.dishes.some(n=>norm(n)===norm(name)));
       if(exists){ showToast(`"${name}" is already in ${exists.name || 'this meal'}`, 'error'); return; }
+      const repeated = repeatNotice([name], meal);
       sc.dishes.push(name);
       bumpUsage(name);
       fileUnderSubcat([name]);
       renderChips();
+      if(repeated) showToast(repeated, 'warn');
     },
     ()=> new Set(mealDishes(meal).map(norm)),
     (names, bucket)=>{
       const have = new Set(mealDishes(meal).map(norm));
       const add = names.filter(n=>!have.has(norm(n)));
       if(!add.length){ showToast('All of these are already in this meal', 'error'); return; }
+      const repeated = repeatNotice(add, meal);
       add.forEach(n=>{ sc.dishes.push(n); bumpUsage(n); });
       // An unnamed sub-category takes the bucket's name, e.g. "Drinks"
       if(bucket && bucket !== BUCKET_NONE && !sc.name.trim()){
@@ -1461,7 +1491,9 @@ function buildSubcatEl(mealEl, meal, sc){
       }
       fileUnderSubcat(add);
       renderChips();
-      showToast(`Added ${add.length} dish${add.length>1?'es':''}`);
+      const addedMsg = `Added ${add.length} dish${add.length>1?'es':''}`;
+      if(repeated) showToast(addedMsg + '\n\n' + repeated, 'warn');
+      else showToast(addedMsg);
     },
     {
       // Picking a bucket names the sub-category after it (while it is unnamed or still empty)
