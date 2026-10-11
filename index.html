@@ -60,7 +60,9 @@ body.no-scroll{overflow:hidden;}
 .client-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:10px 14px;border-bottom:1px solid #f0eadb;}
 .client-row:last-child{border-bottom:none;}
 .client-row:hover,.client-row.active{background:#f6f1e4;}
-.client-row .client-card-info{min-width:0;flex:1;}
+.client-row .client-card-info{min-width:0;flex:1;cursor:pointer;}
+.client-row .client-card-info:hover .client-card-name,.client-row .client-card-info:focus-visible .client-card-name{color:var(--saffron-deep);text-decoration:underline;text-underline-offset:3px;}
+.client-row .client-card-info:focus-visible{outline:2px solid var(--saffron);outline-offset:2px;border-radius:4px;}
 .client-row .client-card-actions{display:flex;gap:6px;flex-shrink:0;}
 .client-row .client-card-actions .btn{padding:6px 10px;font-size:11px;}
 @media (max-width:520px){.client-row{flex-wrap:wrap;}.client-row .client-card-actions{width:100%;}}
@@ -530,7 +532,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
       <select id="libBucket" aria-label="Filter by bucket"></select>
       <button class="btn btn-ghost btn-sm" id="libBucketRename" type="button" title="Change this bucket's name" hidden>Rename bucket</button>
       <button class="btn btn-danger btn-sm" id="libBucketDel" type="button" title="Delete this bucket. Its dishes move to No bucket." hidden>Delete bucket</button>
-      <button class="btn btn-ghost btn-sm" id="libFixCapsBtn" title="Fix capital letters in all dish names">Fix capitals</button>
       <button class="btn btn-primary btn-sm" id="libNewBtn">+ New dish</button>
     </div>
     <div class="lib-count" id="libCount"></div>
@@ -620,7 +621,6 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
     <div class="modal-actions">
       <button class="btn btn-danger" id="bsDelete" type="button" hidden>Delete</button>
       <button class="btn btn-ghost" id="bsDetailsPdf" type="button">Download details PDF</button>
-      <button class="btn btn-ghost" id="bsPreviewQuote" type="button">Download sample quotation</button>
       <button class="btn btn-ghost" id="bsSaveNew" type="button" hidden>Save as new</button>
       <button class="btn btn-primary" id="bsSave" type="button">Save details</button>
     </div>
@@ -669,6 +669,25 @@ input:focus,select:focus,textarea:focus{border-color:var(--saffron);box-shadow:0
       <label for="qmProfile" style="margin:0 4px 0 0;">Payment details</label>
       <select id="qmProfile" class="qm-profile"></select>
       <button class="btn btn-saffron" id="qmDownload" type="button">Download quotation PDF</button>
+    </div>
+  </div>
+</div>
+
+<!-- Unsaved changes -->
+<div class="modal" id="unsavedModal" hidden>
+  <div class="modal-panel narrow" role="dialog" aria-modal="true" aria-labelledby="usTitle">
+    <div class="modal-head">
+      <h2 id="usTitle">Save the current menu?</h2>
+      <button class="btn btn-ghost btn-sm" data-close>Close</button>
+    </div>
+    <p class="modal-sub" id="usText"></p>
+    <div class="field">
+      <label for="usName">Save it under client name</label>
+      <input type="text" id="usName" placeholder="e.g. Sri Sanjay Chaparia Ji">
+    </div>
+    <div class="modal-actions">
+      <button class="btn btn-danger" id="usDiscard" type="button">Don't save</button>
+      <button class="btn btn-save" id="usSave" type="button">Save &amp; continue</button>
     </div>
   </div>
 </div>
@@ -922,9 +941,12 @@ function searchDishes(q, limit=8, bucket=''){
   return res.slice(0, limit);
 }
 
+/* Every new dish gets proper capital letters before it is saved, e.g. "paneer tikka" -> "Paneer Tikka". */
 async function createDish(name, detail, bucket=''){
   name = String(name || '').replace(/\s+/g,' ').trim();
   if(!name) return null;
+  if(library.get(slug(name))) return library.get(slug(name));
+  name = await fixDishCapitals(name);
   const id = slug(name);
   const existing = library.get(id);
   if(existing) return existing;
@@ -1033,18 +1055,37 @@ function bumpUsage(name){
 }
 
 /* Dishes used in a loaded or saved menu but missing from the library get added (no note). */
+/* Dishes in a menu that are not in the library yet are added, with proper capital letters.
+   The menu on screen is updated to the corrected names too. */
 async function ensureInLibrary(names){
   if(!libraryReady || !db) return;
-  const missing = [...new Set(names)].filter(n=>n && !dishByName(n));
+  const missing = [...new Map([...names].filter(n=>n && !dishByName(n)).map(n=>[slug(n), n])).values()];
   if(!missing.length) return;
+  const fixed = [];
+  for(let i=0; i<missing.length; i+=40) fixed.push(...await fixCapsBatch(missing.slice(i, i+40)));
   const batch = db.batch();
-  missing.forEach(name=>{
+  const renames = new Map();
+  let added = 0;
+  missing.forEach((orig, i)=>{
+    const name = fixed[i] || orig;
     const id = slug(name);
+    if(library.has(id)) return;   // added meanwhile
+    if(name !== orig) renames.set(norm(orig), name);
     const data = { name, detail:'', usage:1, ai:{}, nutrition:null, createdAt:new Date().toISOString() };
     library.set(id, { id, ...data });
     batch.set(db.collection('dishes').doc(id), data);
+    added++;
   });
+  if(!added) return;
   onLibraryChanged();
+  if(renames.size){
+    const wasClean = !isMenuDirty();
+    let changed = false;
+    days.forEach(d=>d.meals.forEach(m=>m.subcats.forEach(sc=>{
+      sc.dishes = sc.dishes.map(n=>{ const r = renames.get(norm(n)); if(r && r !== n){ changed = true; return r; } return n; });
+    })));
+    if(changed){ renderAll(); if(wasClean) markMenuClean(); }
+  }
   try { await batch.commit(); } catch(e){ console.error('ensureInLibrary', e); }
 }
 
@@ -1241,14 +1282,104 @@ function allMenuDishes(){ return days.flatMap(d=>d.meals.flatMap(mealDishes)); }
 /* =========================================================================
    BUILD
    ========================================================================= */
-document.getElementById('buildBtn').addEventListener('click',()=>{
+/* ---------- Unsaved changes ----------
+   menuBaseline is taken when a menu is built, loaded or saved. The menu counts as
+   unsaved when its days, dishes, prices, language or quotation differ from it.
+   Client name, venue, mood and notes are left out because the setup card is
+   also used to type in the next client before clicking Build days. */
+let menuBaseline = null;
+function menuSig(){
+  const s = serializeState();
+  return JSON.stringify({ days:s.days, menuLang:s.menuLang, quoteRows:s.quoteRows, quoteTerms:s.quoteTerms });
+}
+function markMenuClean(){
+  menuBaseline = {
+    sig: menuSig(),
+    clientName: document.getElementById('clientName').value.trim(),
+    venue: document.getElementById('venue').value.trim(),
+    moodId: currentMoodId,
+    menuNotes: document.getElementById('menuNotes').value
+  };
+}
+function isMenuDirty(){
+  if(!days.length) return false;
+  if(!menuBaseline) return allMenuDishes().length > 0;
+  return menuSig() !== menuBaseline.sig;
+}
+let afterUnsaved = null;
+function guardUnsaved(action, what){
+  if(!isMenuDirty()){ action(); return; }
+  afterUnsaved = action;
+  const b = menuBaseline || {};
+  const field = document.getElementById('clientName').value.trim();
+  const name = b.clientName || field;
+  document.getElementById('usText').textContent =
+    `The menu${name ? ` for "${name}"` : ''} has changes that are not saved. Save it before ${what}?`;
+  document.getElementById('usName').value = name;
+  openModal('unsavedModal');
+  setTimeout(()=>{ const n = document.getElementById('usName'); if(!n.value) n.focus(); }, 30);
+}
+/* Saves the menu on screen under the name typed in the dialog. If the setup card
+   already holds the next client's details, the old venue, mood and notes are kept. */
+async function savePreviousMenu(name){
+  if(!db){ showToast('Firebase not configured!','error'); return false; }
+  const data = serializeState();
+  const b = menuBaseline || {};
+  const field = document.getElementById('clientName').value.trim();
+  if(b.clientName && norm(field) !== norm(b.clientName)){
+    data.venue = b.venue || '';
+    data.moodId = b.moodId || data.moodId;
+    data.menuNotes = b.menuNotes ?? data.menuNotes;
+  }
+  data.clientName = name;
+  data.numDays = days.length;
+  try {
+    await db.collection('clients').doc(clientDocId(name)).set(data);
+    showToast(`"${name}" saved to cloud!`);
+    markMenuClean();
+    ensureInLibrary(allMenuDishes());
+    loadClientList();
+    return true;
+  } catch(e){
+    console.error('Save error:', e);
+    showToast('Save failed: ' + e.message, 'error');
+    return false;
+  }
+}
+function runAfterUnsaved(){
+  closeModal('unsavedModal');
+  const a = afterUnsaved; afterUnsaved = null;
+  if(a) a();
+}
+document.getElementById('usDiscard').addEventListener('click', runAfterUnsaved);
+document.getElementById('usSave').addEventListener('click', async ()=>{
+  const inp = document.getElementById('usName');
+  const name = inp.value.replace(/\s+/g,' ').trim();
+  if(!name){ showToast('Enter a client name to save under','error'); inp.focus(); return; }
+  const btn = document.getElementById('usSave');
+  btn.disabled = true;
+  const ok = await savePreviousMenu(name);
+  btn.disabled = false;
+  if(ok) runAfterUnsaved();
+});
+document.getElementById('usName').addEventListener('keydown', e=>{ if(e.key==='Enter'){ e.preventDefault(); document.getElementById('usSave').click(); } });
+
+function openClient(id, name){
+  guardUnsaved(()=>loadClient(id), `opening "${name}"`);
+}
+
+/* Build days always starts a fresh menu, using what is typed in the setup card. */
+function startNewBuild(){
   const n = Math.max(1,Math.min(14,parseInt(document.getElementById('numDays').value)||1));
   document.getElementById('numDays').value = n;
-  const newDays = [];
-  for(let i=0;i<n;i++) newDays.push(days[i]||makeEmptyDay(i));
-  days = newDays;
+  days = Array.from({ length:n }, (_, i)=>makeEmptyDay(i));
+  quoteRows = null;
+  quoteTerms = [];
+  pvScope = 'all';
   renderAll();
-});
+  markMenuClean();
+}
+document.getElementById('buildBtn').addEventListener('click', ()=>guardUnsaved(startNewBuild, 'starting a new menu'));
 
 /* =========================================================================
    RENDER — days & meals
@@ -1403,7 +1534,6 @@ function buildSubcatEl(mealEl, meal, sc){
       <span class="grip sc-grip" title="Drag to reorder">${GRIP_SVG}</span>
       <input type="text" class="subcat-name" placeholder="Sub-category name, e.g. Drinks (optional)" value="${esc(sc.name)}">
       <span class="meal-count sc-count"></span>
-      <button class="btn btn-ghost btn-sm sc-pdf" title="Preview and download a PDF of this sub-category only">PDF</button>
       <button class="btn btn-danger btn-sm sc-del" title="Remove this sub-category">✕</button>
     </div>
     <div class="sel-list" data-empty="No dishes yet. Search below to add some."></div>`;
@@ -1411,10 +1541,6 @@ function buildSubcatEl(mealEl, meal, sc){
   nameIn.addEventListener('input', e=>{ sc.name = e.target.value; });
   // A new sub-category name is saved as a bucket, so it can be picked next time.
   nameIn.addEventListener('change', ()=>{ if(cleanBucket(sc.name)) saveBucket(sc.name); });
-  el.querySelector('.sc-pdf').addEventListener('click', ()=>{
-    if(!sc.dishes.length){ showToast('Add some dishes to this sub-category first', 'error'); return; }
-    openPreview(`s:${meal.id}:${sc.id}`);
-  });
   // Dishes with no bucket that are added here join the bucket named after this sub-category.
   const fileUnderSubcat = names=>{
     const b = cleanBucket(sc.name) ? saveBucket(sc.name) : '';
@@ -1665,20 +1791,16 @@ document.getElementById('ndSave').addEventListener('click', async ()=>{
   bucketNew.hidden = true; bucketNew.value = '';
   const btn = document.getElementById('ndSave'); btn.disabled = true;
   const existed = dishByName(name);
-  let finalName = name;
-  if(!existed){
-    btn.textContent = 'Fixing capitals...';
-    finalName = await fixDishCapitals(name);
-  }
+  if(!existed) btn.textContent = 'Saving...';
+  const d = await createDish(name, detail, bucket);
   btn.textContent = 'Save dish';
-  const d = await createDish(finalName, detail, bucket);
   btn.disabled = false;
   if(!d) return;
   if(existed){
     showToast(`"${existed.name}" is already in the library`);
     if(detail && !existed.detail) updateDishDetail(existed.id, detail);
     if(bucket && norm(existed.bucket) !== norm(bucket)) updateDishBucket(existed.id, bucket);
-  } else showToast(finalName !== name ? `Saved as "${d.name}"` : `"${d.name}" added to library`);
+  } else showToast(d.name !== name ? `Saved as "${d.name}"` : `"${d.name}" added to library`);
   if(!ndAddedNames.includes(d.name)) ndAddedNames.push(d.name);
   renderNdAdded();
   if(ndOnSaved) ndOnSaved(d);
@@ -1732,9 +1854,8 @@ document.getElementById('libBucketRename').addEventListener('click', async ()=>{
   fillBucketSelect(sel, 'filter', target);
   renderLibraryList();
 });
-/* ---------- Fix capitals for every dish already in the library ----------
-   Dish ids are based on the lowercase name, so only the "name" field changes.
-   Saved clients and the menu on screen are updated to the new spelling too. */
+/* ---------- Capital letters for many dish names at once ----------
+   Used to give dishes that come in from saved menus the right capital letters. */
 async function fixCapsBatch(names){
   try {
     const resp = await fetch('/api/dish-info', {
@@ -1752,71 +1873,6 @@ async function fixCapsBatch(names){
   return names.map(titleCaseLocal);
 }
 
-document.getElementById('libFixCapsBtn').addEventListener('click', async ()=>{
-  const all = [...library.values()];
-  if(!all.length){ showToast('The library is empty', 'error'); return; }
-  const btn = document.getElementById('libFixCapsBtn');
-  btn.disabled = true;
-
-  const changes = []; // { dish, from, to }
-  for(let i=0; i<all.length; i+=40){
-    btn.textContent = `Checking ${Math.min(i+40, all.length)} of ${all.length}...`;
-    const chunk = all.slice(i, i+40);
-    const fixed = await fixCapsBatch(chunk.map(d=>d.name));
-    chunk.forEach((d,k)=>{ if(fixed[k] && fixed[k] !== d.name) changes.push({ dish:d, from:d.name, to:fixed[k] }); });
-  }
-  btn.textContent = 'Fix capitals'; btn.disabled = false;
-
-  if(!changes.length){ showToast('All dish names already look right'); return; }
-  const sample = changes.slice(0,8).map(c=>`${c.from}  ->  ${c.to}`).join('\n');
-  const more = changes.length > 8 ? `\n...and ${changes.length-8} more` : '';
-  if(!confirm(`Rename ${changes.length} dish${changes.length>1?'es':''}?\n\n${sample}${more}\n\nSaved clients will be updated to the new names too.`)) return;
-
-  btn.disabled = true; btn.textContent = 'Saving...';
-  const map = new Map(changes.map(c=>[norm(c.from), c.to]));
-  const rename = n => map.get(norm(n)) || n;
-
-  // 1. Library
-  changes.forEach(c=>{ c.dish.name = c.to; });
-  // 2. Menu on screen
-  days.forEach(d=>d.meals.forEach(m=>m.subcats.forEach(sc=>{ sc.dishes = sc.dishes.map(rename); })));
-  renderAll();
-  onLibraryChanged();
-
-  if(db){
-    try {
-      // Firestore batches hold up to 500 writes
-      const writes = changes.map(c=>[db.collection('dishes').doc(c.dish.id), { name:c.to }]);
-      let clientCount = 0;
-      const snap = await db.collection('clients').get();
-      snap.forEach(doc=>{
-        const data = doc.data(); let touched = false;
-        (data.days||[]).forEach(day=>(day.meals||[]).forEach(meal=>{
-          (meal.subcats||[]).forEach(sc=>{
-            const next = (sc.dishes||[]).map(rename);
-            if(next.some((n,i)=>n!==sc.dishes[i])){ sc.dishes = next; touched = true; }
-          });
-          if(Array.isArray(meal.dishes)){
-            const next = meal.dishes.map(rename);
-            if(next.some((n,i)=>n!==meal.dishes[i])){ meal.dishes = next; touched = true; }
-          }
-        }));
-        if(touched){ writes.push([doc.ref || db.collection('clients').doc(doc.id), { days:data.days }]); clientCount++; }
-      });
-      for(let i=0; i<writes.length; i+=450){
-        const batch = db.batch();
-        writes.slice(i,i+450).forEach(([ref,upd])=>batch.update(ref, upd));
-        await batch.commit();
-      }
-      showToast(`Renamed ${changes.length} dish${changes.length>1?'es':''}` + (clientCount ? ` and updated ${clientCount} saved client${clientCount>1?'s':''}` : ''));
-      loadClientList();
-    } catch(e){
-      console.error('Rename failed', e);
-      showToast('Some names were not saved: ' + e.message, 'error');
-    }
-  } else showToast(`Renamed ${changes.length} dishes for this session`);
-  btn.textContent = 'Fix capitals'; btn.disabled = false;
-});
 
 document.getElementById('libNewBtn').addEventListener('click', ()=>{
   const b = document.getElementById('libBucket').value;
@@ -3382,10 +3438,6 @@ document.getElementById('bsDetailsPdf').addEventListener('click', ()=>{
   if(!has){ showToast('Fill in at least one detail first', 'error'); return; }
   generateDetailsPDF(B, document.getElementById('bsName').value.trim());
 });
-document.getElementById('bsPreviewQuote').addEventListener('click', ()=>{
-  const useSample = !days.length || !allMenuDishes().length;
-  generateQuotePDF(readBizForm(), useSample);
-});
 
 /* =========================================================================
    PDF — QUOTATION (Table format with pricing)
@@ -3916,6 +3968,7 @@ async function saveClient(){
   const docId = clientDocId(clientName);
   try {
     await db.collection('clients').doc(docId).set(data);
+    markMenuClean();
     ensureInLibrary(allMenuDishes());
     showToast(`"${clientName}" saved to cloud!`);
     loadClientList();
@@ -4002,18 +4055,20 @@ function renderClientList(){
     const moodName = d.moodId ? (moods.find(m=>m.id===d.moodId)?.name || '') : '';
     row.title = savedDate ? `Saved on ${savedDate}` : '';
     row.innerHTML = `
-      <div class="client-card-info">
+      <div class="client-card-info" role="button" tabindex="0" title="Open this client">
         <div class="client-card-name">${esc(d.clientName||id)}</div>
         ${d.venue ? `<div class="client-card-venue">${esc(d.venue)}</div>` : ''}
         <div class="client-card-meta">${esc(evText)} · ${d.numDays||0} day${(d.numDays||0)>1?'s':''}${moodName?' · '+esc(moodName):''}</div>
       </div>
       <div class="client-card-actions">
-        <button type="button" class="btn btn-saffron btn-sm load-btn">Load</button>
         <button type="button" class="btn btn-ghost btn-sm clone-btn" title="Copy this menu to a new client">Clone</button>
         <button type="button" class="btn btn-danger btn-sm del-btn">Delete</button>
       </div>`;
-    row.querySelector('.load-btn').addEventListener('click', () => { closeClientDrop(); loadClient(id); });
-    row.querySelector('.clone-btn').addEventListener('click', () => { closeClientDrop(); cloneClient(id); });
+    const info = row.querySelector('.client-card-info');
+    const open = () => { closeClientDrop(); openClient(id, d.clientName || id); };
+    info.addEventListener('click', open);
+    info.addEventListener('keydown', e => { if(e.key === 'Enter' || e.key === ' '){ e.preventDefault(); open(); } });
+    row.querySelector('.clone-btn').addEventListener('click', () => { closeClientDrop(); guardUnsaved(() => cloneClient(id), 'cloning another client'); });
     row.querySelector('.del-btn').addEventListener('click', () => deleteClient(id, d.clientName));
     clientDrop.appendChild(row);
   });
@@ -4024,7 +4079,7 @@ clientNameBox.addEventListener('click', openClientDrop);
 clientNameBox.addEventListener('input', openClientDrop);
 clientNameBox.addEventListener('keydown', e=>{
   if(e.key === 'Escape'){ closeClientDrop(); clientNameBox.blur(); }
-  if(e.key === 'Enter' && clientMatches.length === 1){ e.preventDefault(); closeClientDrop(); loadClient(clientMatches[0].id); }
+  if(e.key === 'Enter' && clientMatches.length === 1){ e.preventDefault(); closeClientDrop(); const m = clientMatches[0]; openClient(m.id, m.data.clientName || m.id); }
 });
 clientDateBox.addEventListener('change', openClientDrop);
 clientDateBox.addEventListener('input', openClientDrop);
@@ -4044,6 +4099,7 @@ async function loadClient(docId){
     const doc = await db.collection('clients').doc(docId).get();
     if(!doc.exists){ showToast('Client not found','error'); return; }
     deserializeState(doc.data());
+    markMenuClean();
     showToast(`"${doc.data().clientName}" loaded!`);
     window.scrollTo({ top: document.querySelector('.setup').offsetTop - 20, behavior: 'smooth' });
   } catch(e){
@@ -4096,6 +4152,7 @@ async function cloneClient(docId){
   try {
     await db.collection('clients').doc(clientDocId(newName)).set(copy);
     deserializeState(copy);
+    markMenuClean();
     showToast(`Cloned to "${newName}". Set the event dates, then save.`);
     loadClientList();
     window.scrollTo({ top: document.querySelector('.setup').offsetTop - 20, behavior: 'smooth' });
